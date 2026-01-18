@@ -148,8 +148,6 @@
 //         analysisId: savedData.id,
 //       };
 
-
-
 //       console.log('✅ Museum analysis complete and saved!');
 //       return result;
 
@@ -242,21 +240,15 @@
 
 // export default analyzeImage;
 
-
-
-
-
-
-
-
-
-
-
 // utils/analyzeImage.ts
-// Updated to handle Museum, Monument, and Landscape modes
+// Updated to handle Museum, Monument, and Landscape modes with database caching
 
-import { AnalysisResult, analyzeImage as analyzeWithNavigator } from './analyzeImageWithNavigator';
-import { ARTapi } from './api';
+import {
+  AnalysisResult,
+  analyzeImage as analyzeWithNavigator,
+  getQuickMetadata,
+} from "./analyzeImageWithNavigator";
+import { ARTapi } from "./api";
 
 export interface AnalyzeImageResult {
   imageUri: string;
@@ -274,26 +266,74 @@ export interface AnalyzeImageResult {
 /**
  * Main function to analyze images based on mode
  * Supports: museum, monuments, landscape
+ * NOW WITH CACHING: Checks database first to avoid re-analyzing
  */
 export async function analyzeImage(
   imageUri: string,
-  mode: 'museum' | 'monuments' | 'landscape'
+  mode: "museum" | "monuments" | "landscape",
 ): Promise<AnalyzeImageResult> {
-
   console.log(`🎯 Starting ${mode} analysis...`);
 
   try {
-    // Step 1: Analyze with Navigator AI and generate music with Suno
-    console.log(`🎨 ${mode.charAt(0).toUpperCase() + mode.slice(1)} Mode: Starting Navigator AI analysis...`);
-    const analysisResult: AnalysisResult = await analyzeWithNavigator(imageUri, mode);
+    // STEP 0A: Check database by image URI first
+    console.log("🔍 Checking database for cached analysis by URI...");
+    try {
+      const cachedByUri = await ARTapi.findByImageUri(imageUri);
 
-    // Step 2: Save to database
-    console.log('💾 Saving analysis to database...');
+      if (cachedByUri) {
+        console.log("✅ Found cached analysis by URI! Skipping AI generation.");
+        console.log(`📦 Cached ${mode}:`, cachedByUri.image_name);
+
+        return formatCachedResult(cachedByUri, imageUri);
+      }
+
+      console.log("🔍 No cached result by URI.");
+    } catch (uriError) {
+      console.warn("⚠️  URI cache lookup failed:", uriError);
+    }
+
+    // STEP 0B: Try to identify by name and check database
+    console.log(`🔍 Quick identification to check database by name...`);
+    try {
+      const quickData = await getQuickMetadata(imageUri, mode);
+
+      if (quickData?.name) {
+        console.log(`📝 Identified as: ${quickData.name}`);
+
+        const cachedByName = await ARTapi.findByName(quickData.name, mode);
+
+        if (cachedByName) {
+          console.log(
+            "✅ Found cached analysis by name! Skipping AI generation.",
+          );
+          console.log(`📦 Cached ${mode}:`, cachedByName.image_name);
+
+          return formatCachedResult(cachedByName, imageUri);
+        }
+
+        console.log("🔍 No cached result by name.");
+      }
+    } catch (nameError) {
+      console.warn("⚠️  Name-based cache lookup failed:", nameError);
+    }
+
+    // STEP 1: No cache found - Run full AI analysis
+    console.log("🆕 No cached data found. Running full AI analysis...");
+    console.log(
+      `🎨 ${mode.charAt(0).toUpperCase() + mode.slice(1)} Mode: Starting Navigator AI analysis...`,
+    );
+    const analysisResult: AnalysisResult = await analyzeWithNavigator(
+      imageUri,
+      mode,
+    );
+
+    // STEP 2: Save to database
+    console.log("💾 Saving analysis to database...");
     try {
       const savedData = await ARTapi.saveAnalysis(analysisResult);
-      console.log('✅ Successfully saved to database with ID:', savedData.id);
+      console.log("✅ Successfully saved to database with ID:", savedData.id);
 
-      // Step 3: Format for ResultScreen
+      // STEP 3: Format for ResultScreen
       const result: AnalyzeImageResult = {
         imageUri: analysisResult.imageUri,
         title: analysisResult.name,
@@ -309,10 +349,11 @@ export async function analyzeImage(
 
       console.log(`✅ ${mode} analysis complete and saved!`);
       return result;
-
     } catch (dbError) {
-      console.error('❌ Database save failed:', dbError);
-      console.log('⚠️  Continuing without database save - data will not be in history');
+      console.error("❌ Database save failed:", dbError);
+      console.log(
+        "⚠️  Continuing without database save - data will not be in history",
+      );
 
       // Still return result so user can see analysis even if DB fails
       const result: AnalyzeImageResult = {
@@ -331,44 +372,121 @@ export async function analyzeImage(
       console.log(`⚠️  ${mode} analysis complete but NOT saved to database`);
       return result;
     }
-
   } catch (error) {
     console.error(`❌ ${mode} mode analysis failed:`, error);
-    throw new Error(`${mode} analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `${mode} analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   }
+}
+
+/**
+ * Helper: Format cached database result into AnalyzeImageResult
+ */
+function formatCachedResult(cached: any, imageUri: string): AnalyzeImageResult {
+  const mode = cached.analysis_type as "museum" | "monuments" | "landscape";
+
+  return {
+    imageUri: imageUri || cached.metadata?.imageUri || "", // Use current photo first
+    title: cached.image_name,
+    artist: cached.metadata?.creator || "Unknown",
+    type: cached.metadata?.category || "Unknown",
+    description:
+      cached.metadata?.historicalPrompt || cached.descriptions[0] || "",
+    historicalPrompt:
+      cached.metadata?.historicalPrompt || cached.descriptions[0] || "",
+    immersivePrompt:
+      cached.metadata?.immersivePrompt || cached.descriptions[1] || "",
+    emotions:
+      cached.metadata?.emotions ||
+      extractEmotions(cached.metadata?.immersivePrompt || "", mode),
+    audioUri: cached.metadata?.audioUri || null,
+    analysisId: cached.id,
+  };
 }
 
 /**
  * Helper: Extract emotion keywords based on mode and description
  */
-function extractEmotions(immersivePrompt: string, mode: 'museum' | 'monuments' | 'landscape'): string[] {
+function extractEmotions(
+  immersivePrompt: string,
+  mode: "museum" | "monuments" | "landscape",
+): string[] {
   const text = immersivePrompt.toLowerCase();
 
   // Mode-specific emotion keywords
   const emotionKeywordsByMode = {
     museum: [
-      'calm', 'dreamy', 'melancholy', 'energetic', 'mysterious',
-      'romantic', 'joyful', 'somber', 'dramatic', 'peaceful',
-      'intense', 'serene', 'vibrant', 'haunting', 'ethereal',
-      'expressive', 'bold', 'delicate', 'passionate', 'contemplative'
+      "calm",
+      "dreamy",
+      "melancholy",
+      "energetic",
+      "mysterious",
+      "romantic",
+      "joyful",
+      "somber",
+      "dramatic",
+      "peaceful",
+      "intense",
+      "serene",
+      "vibrant",
+      "haunting",
+      "ethereal",
+      "expressive",
+      "bold",
+      "delicate",
+      "passionate",
+      "contemplative",
     ],
     monuments: [
-      'grand', 'historic', 'majestic', 'ancient', 'powerful',
-      'monumental', 'imposing', 'timeless', 'sacred', 'legendary',
-      'awe-inspiring', 'magnificent', 'architectural', 'enduring', 'symbolic',
-      'mysterious', 'spiritual', 'cultural', 'proud', 'eternal'
+      "grand",
+      "historic",
+      "majestic",
+      "ancient",
+      "powerful",
+      "monumental",
+      "imposing",
+      "timeless",
+      "sacred",
+      "legendary",
+      "awe-inspiring",
+      "magnificent",
+      "architectural",
+      "enduring",
+      "symbolic",
+      "mysterious",
+      "spiritual",
+      "cultural",
+      "proud",
+      "eternal",
     ],
     landscape: [
-      'peaceful', 'serene', 'natural', 'wild', 'tranquil',
-      'majestic', 'vast', 'untamed', 'pristine', 'breathtaking',
-      'rugged', 'gentle', 'expansive', 'remote', 'dramatic',
-      'scenic', 'lush', 'barren', 'sublime', 'harmonious'
-    ]
+      "peaceful",
+      "serene",
+      "natural",
+      "wild",
+      "tranquil",
+      "majestic",
+      "vast",
+      "untamed",
+      "pristine",
+      "breathtaking",
+      "rugged",
+      "gentle",
+      "expansive",
+      "remote",
+      "dramatic",
+      "scenic",
+      "lush",
+      "barren",
+      "sublime",
+      "harmonious",
+    ],
   };
 
   const emotionKeywords = emotionKeywordsByMode[mode];
-  const foundEmotions = emotionKeywords.filter(emotion =>
-    text.includes(emotion)
+  const foundEmotions = emotionKeywords.filter((emotion) =>
+    text.includes(emotion),
   );
 
   // Return found emotions or mode-appropriate defaults
@@ -378,9 +496,9 @@ function extractEmotions(immersivePrompt: string, mode: 'museum' | 'monuments' |
 
   // Mode-specific defaults if no emotions found
   const defaultEmotions = {
-    museum: ['artistic', 'expressive', 'captivating'],
-    monuments: ['historic', 'grand', 'impressive'],
-    landscape: ['natural', 'peaceful', 'beautiful']
+    museum: ["artistic", "expressive", "captivating"],
+    monuments: ["historic", "grand", "impressive"],
+    landscape: ["natural", "peaceful", "beautiful"],
   };
 
   return defaultEmotions[mode];

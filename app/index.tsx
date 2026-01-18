@@ -1,14 +1,32 @@
 import ModeButton from '@/components/mode-button';
+import OnboardingModal from '@/components/onboarding-modal';
 import VOPressable from '@/components/vo-pressable';
 import { MaterialIcons } from '@expo/vector-icons';
 // decorative icons removed from this screen
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+// Track if onboarding has been shown in this app session
+let hasShownOnboarding = false;
 
 export default function Home() {
   const router = useRouter();
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const isFirstMount = useRef(true);
+
+  useEffect(() => {
+    // Only show on first mount AND if not shown in this session
+    if (isFirstMount.current && !hasShownOnboarding) {
+      setShowOnboarding(true);
+      hasShownOnboarding = true;
+      isFirstMount.current = false;
+    }
+  }, []);
+
+  const handleCloseOnboarding = () => {
+    setShowOnboarding(false);
+  };
 
   const openMode = (mode: 'museum' | 'monuments' | 'landscape') => {
     // cast to any because expo-router expects specific typed routes in this project
@@ -25,13 +43,15 @@ export default function Home() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <OnboardingModal visible={showOnboarding} onClose={handleCloseOnboarding} />
+      
       <View style={styles.bgDecor} pointerEvents="none">
         <View style={styles.glowLeft} />
         <View style={styles.glowRight} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={[styles.title, { fontSize: titleSize }]} accessibilityRole="header">ART</Text>
+        <Text style={[styles.title, { fontSize: titleSize }]} accessibilityRole="header">ArtBeyondSight</Text>
         <Text style={styles.subtitle}>Turning Art into Music</Text>
 
         {/* tagline removed per request */}

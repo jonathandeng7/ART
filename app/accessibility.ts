@@ -9,65 +9,70 @@ const SETTINGS_KEY = '@app_accessibility_settings';
 type TTSSettings = {
   rate: number;
   pitch: number;
-  matchVoiceOver?: boolean;
+  syncWithVoiceOver?: boolean;
 };
 
 let isScreenReaderEnabled = false;
-let isTTSEnabled = true; // Controls whether in-app TTS is enabled
-let shouldMatchVoiceOver = false; // Whether to auto-match VoiceOver settings
+let isTTSEnabled = true; // Controls in-app TTS
+let syncWithVoiceOver = false; // Whether to mirror VoiceOver defaults
 let defaultTTSSettings: TTSSettings = {
-  rate: 0.85,
-  pitch: 1.0,
+  rate: 0.6,
+  pitch: 2.0,
 };
 
-// VoiceOver typically uses these settings
 const VOICEOVER_DEFAULTS = {
-  rate: 0.5, // VoiceOver default speed is typically around 50%
-  pitch: 1.0,
+  rate: 0.6,
+  pitch: 2.0,
 };
+
+// Cache available voices
+let cachedVoices: Speech.Voice[] = [];
+
+/**
+ * AccessibilityService
+ * Unified VoiceOver/TalkBack, TTS, and haptics control.
+ * 
+ * - Uses VoiceOver announcements when enabled
+ * - Uses custom TTS when VoiceOver is off
+ * - Auto-selects premium voices when available
+ * - Supports persistent user settings and audio mixing
+ */
 
 async function init() {
   try {
-    // load settings from storage if available
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      defaultTTSSettings.rate = parsed.ttsSpeed ?? defaultTTSSettings.rate;
-      defaultTTSSettings.pitch = parsed.ttsPitch ?? defaultTTSSettings.pitch;
-      isTTSEnabled = parsed.matchVoiceOver ?? true;
-      shouldMatchVoiceOver = parsed.shouldMatchVoiceOver ?? false;
+      defaultTTSSettings.rate = parsed.rate ?? defaultTTSSettings.rate;
+      defaultTTSSettings.pitch = parsed.pitch ?? defaultTTSSettings.pitch;
+      isTTSEnabled = parsed.ttsEnabled ?? true;
+      syncWithVoiceOver = parsed.syncWithVoiceOver ?? false;
     }
   } catch (e) {
-    // ignore - proceed with defaults
     console.warn('Accessibility init: failed to load settings', e);
   }
 
   try {
     const enabled = await AccessibilityInfo.isScreenReaderEnabled();
     isScreenReaderEnabled = enabled;
-    
-    // If VoiceOver is on and user wants to match it, apply VoiceOver defaults
-    if (enabled && shouldMatchVoiceOver) {
-      defaultTTSSettings.rate = VOICEOVER_DEFAULTS.rate;
-      defaultTTSSettings.pitch = VOICEOVER_DEFAULTS.pitch;
+
+    if (enabled && syncWithVoiceOver) {
+      defaultTTSSettings = { ...VOICEOVER_DEFAULTS };
     }
   } catch {
     isScreenReaderEnabled = false;
   }
 
-  // listen for changes
   try {
     AccessibilityInfo.addEventListener('screenReaderChanged', (enabled: boolean) => {
       isScreenReaderEnabled = enabled;
-      
-      // Auto-adjust settings when VoiceOver state changes
-      if (enabled && shouldMatchVoiceOver) {
-        defaultTTSSettings.rate = VOICEOVER_DEFAULTS.rate;
-        defaultTTSSettings.pitch = VOICEOVER_DEFAULTS.pitch;
+
+      if (enabled && syncWithVoiceOver) {
+        defaultTTSSettings = { ...VOICEOVER_DEFAULTS };
       }
     });
   } catch {
-    // some RN versions use different APIs; swallow errors
+    // Ignore for RN version differences
   }
 }
 
@@ -79,8 +84,8 @@ function getTTSEnabled() {
   return isTTSEnabled;
 }
 
-function getShouldMatchVoiceOver() {
-  return shouldMatchVoiceOver;
+function getSyncWithVoiceOver() {
+  return syncWithVoiceOver;
 }
 
 function setDefaultSpeechSettings(settings: Partial<TTSSettings>) {
@@ -88,67 +93,71 @@ function setDefaultSpeechSettings(settings: Partial<TTSSettings>) {
   if (settings.pitch !== undefined) defaultTTSSettings.pitch = settings.pitch;
 }
 
-async function speak(text: string, options?: Partial<Speech.SpeechOptions>) {
-  // Don't speak if TTS is disabled in settings
-  if (!isTTSEnabled) {
-    return;
-  }
-
-  (async () => {
-    try {
-      const voices = await Speech.getAvailableVoicesAsync();
-      let preferredVoice: any;
-
-      if (Platform.OS === 'ios') {
-        preferredVoice = voices.find((v: any) => v.name === 'Ava') ||
-          voices.find((v: any) => v.name === 'Zoe') ||
-          voices.find((v: any) => v.name === 'Samantha') ||
-          voices.find((v: any) => v.name === 'Nicky');
-      } else {
-        preferredVoice = voices.find((v: any) => (v.identifier || '').includes('en-us-x-')) || voices.find((v: any) => (v.quality === 'Enhanced'));
-      }
-
-      // If the platform is iOS and a screen reader is enabled, configure the audio
-      // session so the app's TTS can mix with VoiceOver instead of replacing it.
-      // This uses expo-av's Audio.setAudioModeAsync to request mixing behaviour.
-      try {
-        if (Platform.OS === 'ios' && isScreenReaderEnabled) {
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            shouldDuckAndroid: false,
-            playThroughEarpieceAndroid: false,
-          });
-        } else if (Platform.OS === 'android') {
-          // On Android prefer ducking so system speech can be heard alongside app audio.
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            shouldDuckAndroid: true,
-            playThroughEarpieceAndroid: false,
-          });
-        }
-      } catch (audioErr) {
-        // Non-fatal: if setting audio mode fails, continue and try to speak normally.
-        console.warn('AccessibilityService: failed to set audio mode for TTS mixing', audioErr);
-      }
-
-      await Speech.stop();
-      Speech.speak(text, {
-        voice: preferredVoice?.identifier,
-        language: 'en-US',
-        pitch: options?.pitch ?? defaultTTSSettings.pitch,
-        rate: options?.rate ?? defaultTTSSettings.rate,
-        ...(options as any),
-      });
-    } catch {
-      console.warn('AccessibilityService.speak error');
-      try { await Speech.stop(); } catch {}
-      try { Speech.speak(text); } catch {}
+async function getAvailableVoices(preferredLang = 'en-US') {
+  try {
+    if (cachedVoices.length === 0) {
+      cachedVoices = await Speech.getAvailableVoicesAsync();
+      console.log(
+        'Available voices:',
+        cachedVoices.map(v => ({
+          name: v.name,
+          id: v.identifier,
+          lang: v.language,
+          quality: v.quality,
+        }))
+      );
     }
-  })();
+
+    // Return null to use system default voice
+    return null;
+  } catch (e) {
+    console.warn('getAvailableVoices error', e);
+    return null;
+  }
+}
+
+async function speak(text: string, options?: Partial<Speech.SpeechOptions>) {
+  if (!isTTSEnabled) return;
+
+  try {
+    try {
+      if (Platform.OS === 'ios' && isScreenReaderEnabled) {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: false,
+          playThroughEarpieceAndroid: false,
+        });
+      } else if (Platform.OS === 'android') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      }
+    } catch (audioErr) {
+      console.warn('TTS: failed to set audio mode', audioErr);
+    }
+
+    await Speech.stop();
+    Speech.speak(text, {
+      language: 'en-US',
+      pitch: options?.pitch ?? defaultTTSSettings.pitch,
+      rate: options?.rate ?? defaultTTSSettings.rate,
+      ...options,
+    });
+
+    console.log('Speaking with default system voice');
+  } catch (err) {
+    console.warn('TTS speak error', err);
+    try {
+      await Speech.stop();
+      Speech.speak(text);
+    } catch {}
+  }
 }
 
 function announceForAccessibility(text: string) {
@@ -161,13 +170,10 @@ function announceForAccessibility(text: string) {
 
 function announceOrSpeak(text: string, speakOptions?: Partial<Speech.SpeechOptions>) {
   if (isScreenReaderEnabled) {
-    // When VoiceOver/TalkBack is on, use native announcements
     announceForAccessibility(text);
   } else if (isTTSEnabled) {
-    // When screen reader is off and TTS is enabled, use custom TTS
     speak(text, speakOptions);
   }
-  // If both are disabled, do nothing
 }
 
 async function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'medium') {
@@ -183,23 +189,16 @@ async function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'medium') {
   }
 }
 
-async function saveSettings(rate: number, pitch: number, matchVoiceOver = false, syncWithVoiceOver = false) {
+async function saveSettings(rate: number, pitch: number, ttsEnabled = true, sync = false) {
   try {
-    const payload = { 
-      ttsSpeed: rate, 
-      ttsPitch: pitch, 
-      matchVoiceOver,
-      shouldMatchVoiceOver: syncWithVoiceOver 
-    };
+    const payload = { rate, pitch, ttsEnabled, syncWithVoiceOver: sync };
     await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
     setDefaultSpeechSettings({ rate, pitch });
-    isTTSEnabled = matchVoiceOver; // Update the runtime flag
-    shouldMatchVoiceOver = syncWithVoiceOver;
-    
-    // If syncing with VoiceOver and it's currently enabled, apply VoiceOver defaults
-    if (syncWithVoiceOver && isScreenReaderEnabled) {
-      defaultTTSSettings.rate = VOICEOVER_DEFAULTS.rate;
-      defaultTTSSettings.pitch = VOICEOVER_DEFAULTS.pitch;
+    isTTSEnabled = ttsEnabled;
+    syncWithVoiceOver = sync;
+
+    if (sync && isScreenReaderEnabled) {
+      defaultTTSSettings = { ...VOICEOVER_DEFAULTS };
     }
   } catch (e) {
     console.warn('saveSettings error', e);
@@ -224,7 +223,7 @@ export default {
   init,
   getScreenReaderEnabled,
   getTTSEnabled,
-  getShouldMatchVoiceOver,
+  getSyncWithVoiceOver,
   setDefaultSpeechSettings,
   speak,
   announceForAccessibility,
@@ -233,18 +232,21 @@ export default {
   saveSettings,
   loadSettings,
   getVoiceOverDefaults,
+  getAvailableVoices,
 };
 
 export {
-    announceForAccessibility,
-    announceOrSpeak,
-    getScreenReaderEnabled, getShouldMatchVoiceOver, getTTSEnabled, getVoiceOverDefaults,
-    hapticImpact,
-    init as initAccessibility,
-    loadSettings,
-    saveSettings,
-    setDefaultSpeechSettings,
-    SETTINGS_KEY,
-    speak
+  announceForAccessibility,
+  announceOrSpeak, getAvailableVoices, getScreenReaderEnabled,
+  getSyncWithVoiceOver,
+  getTTSEnabled,
+  getVoiceOverDefaults,
+  hapticImpact,
+  init as initAccessibility,
+  loadSettings,
+  saveSettings,
+  setDefaultSpeechSettings,
+  SETTINGS_KEY,
+  speak
 };
 

@@ -364,8 +364,10 @@
 
 
 
+
+
 // app/scan/[mode].tsx
-// Updated to include scanner option
+// Enhanced with better mode-specific messages
 
 import { announceOrSpeak } from '@/app/accessibility';
 import { analyzeImage } from '@/utils/analyzeImage';
@@ -377,13 +379,11 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
-import ArtScanner from './scanner';
 
 export default function ScanScreen() {
   const router = useRouter();
@@ -393,51 +393,31 @@ export default function ScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
 
-  const modeColor =
-    mode === 'museum' ? '#3B82F6' :
-    mode === 'monuments' ? '#A0522D' : '#16A34A';
-
-  // Announce mode entry
+  // Announce when entering the mode
   useEffect(() => {
     const modeMessages = {
-      museum: 'Museum Mode. You can scan, upload, or take a photo of artwork.',
-      monuments: 'Monuments Mode. Scan or capture historic landmarks.',
-      landscape: 'Landscape Mode. Scan or photograph natural scenery.'
+      museum: 'Museum Mode. Upload or take a photo of artwork to begin.',
+      monuments: 'Monuments Mode. Capture historic landmarks and buildings.',
+      landscape: 'Landscape Mode. Photograph natural scenery and landscapes.'
     };
     
     const timer = setTimeout(() => {
-      announceOrSpeak(modeMessages[mode]);
+      announceOrSpeak(`You are now in ${modeMessages[mode]}`);
     }, 300);
     
     return () => clearTimeout(timer);
   }, [mode]);
 
-  // 🔍 Open Scanner (NEW!)
-  const openScanner = () => {
-    announceOrSpeak('Opening scanner. Pan your camera slowly around the area to detect artwork.');
-    setShowScanner(true);
-  };
+  const modeColor =
+    mode === 'museum' ? '#3B82F6' :
+    mode === 'monuments' ? '#A0522D' : '#16A34A';
 
-  // Handle successful detection from scanner
-  const handleArtDetected = (uri: string) => {
-    setShowScanner(false);
-    setImageUri(uri);
-    announceOrSpeak('Artwork detected! Ready to analyze.');
-  };
-
-  // Handle scanner timeout
-  const handleScanTimeout = () => {
-    setShowScanner(false);
-    announceOrSpeak('No artwork detected. Please upload or take a photo manually.');
-  };
-
-  // 📸 Pick from gallery
+  // 📸 Pick an image from the gallery
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Gallery access is required.');
+      Alert.alert('Permission required', 'Gallery access is required to select an image.');
       return;
     }
 
@@ -452,11 +432,11 @@ export default function ScanScreen() {
     }
   };
 
-  // 📷 Take photo
+  // 📷 Take a photo with the device camera
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Camera access is required.');
+      Alert.alert('Permission required', 'Camera access is required to take a photo.');
       return;
     }
 
@@ -464,10 +444,13 @@ export default function ScanScreen() {
     if (!result.canceled && result.assets?.length > 0) {
       setImageUri(result.assets[0].uri);
       announceOrSpeak('Photo captured');
+    } else if ((result as any).uri) {
+      setImageUri((result as any).uri);
+      announceOrSpeak('Photo captured');
     }
   };
 
-  // 🧠 Analyze image
+  // 🧠 Analyze the selected image
   const handleAnalyze = async () => {
     if (!imageUri) return;
     
@@ -475,34 +458,45 @@ export default function ScanScreen() {
       setIsProcessing(true);
       
       // Mode-specific progress messages
-      const progressSteps = {
-        museum: [
+      if (mode === 'museum') {
+        const steps = [
           'Converting image...',
           'Getting painting metadata...',
           'Analyzing historical context...',
           'Creating immersive description...',
           'Generating music, this may take 1 to 2 minutes...'
-        ],
-        monuments: [
+        ];
+        for (const msg of steps) {
+          setProgressMessage(msg);
+          announceOrSpeak(msg);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } else if (mode === 'monuments') {
+        const steps = [
           'Converting image...',
           'Identifying monument...',
           'Gathering historical information...',
           'Creating atmospheric description...',
           'Generating epic music, this may take 1 to 2 minutes...'
-        ],
-        landscape: [
+        ];
+        for (const msg of steps) {
+          setProgressMessage(msg);
+          announceOrSpeak(msg);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } else { // landscape
+        const steps = [
           'Converting image...',
           'Analyzing landscape...',
           'Identifying natural features...',
           'Creating immersive scene description...',
           'Generating ambient music, this may take 1 to 2 minutes...'
-        ]
-      };
-
-      for (const msg of progressSteps[mode]) {
-        setProgressMessage(msg);
-        announceOrSpeak(msg);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        ];
+        for (const msg of steps) {
+          setProgressMessage(msg);
+          announceOrSpeak(msg);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
       
       const result = await analyzeImage(imageUri, mode);
@@ -516,7 +510,7 @@ export default function ScanScreen() {
       
     } catch (error) {
       console.error('Analysis error:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Failed to analyze image.';
+      const errorMsg = error instanceof Error ? error.message : 'Failed to analyze image. Please try again.';
       announceOrSpeak(`Error: ${errorMsg}`);
       Alert.alert('Analysis Failed', errorMsg);
     } finally {
@@ -527,20 +521,7 @@ export default function ScanScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Scanner Modal */}
-      <Modal
-        visible={showScanner}
-        animationType="slide"
-        presentationStyle="fullScreen"
-      >
-        <ArtScanner
-          mode={mode}
-          onArtDetected={handleArtDetected}
-          onTimeout={handleScanTimeout}
-        />
-      </Modal>
-
-      {/* Preview */}
+      {/* Preview Section */}
       {imageUri ? (
         <Image source={{ uri: imageUri }} style={styles.preview} />
       ) : (
@@ -548,16 +529,16 @@ export default function ScanScreen() {
           <MaterialIcons name="image" size={80} color={modeColor} />
           <Text style={styles.placeholderText}>No image selected</Text>
           <Text style={styles.placeholderSubtext}>
-            {mode === 'museum' ? 'Scan, select, or capture a painting' :
-             mode === 'monuments' ? 'Scan, select, or capture a monument' :
-             'Scan, select, or capture a landscape'}
+            {mode === 'museum' ? 'Select a painting or artwork' :
+             mode === 'monuments' ? 'Select a monument or landmark' :
+             'Select a landscape or nature scene'}
           </Text>
         </View>
       )}
 
-      {/* Loader */}
+      {/* Loader Overlay */}
       {isProcessing && (
-        <View style={styles.loaderOverlay}>
+        <View style={styles.loaderOverlay} accessible accessibilityLiveRegion="polite">
           <View style={styles.loaderCard}>
             <ActivityIndicator size="large" color={modeColor} />
             <Text style={styles.loaderTitle}>
@@ -568,49 +549,46 @@ export default function ScanScreen() {
             {progressMessage && (
               <Text style={styles.loaderText}>{progressMessage}</Text>
             )}
+            {progressMessage.includes('music') && (
+              <Text style={styles.loaderSubtext}>
+                {mode === 'museum' 
+                  ? "Generating unique music based on the artwork's mood..."
+                  : mode === 'monuments'
+                  ? "Creating epic orchestral music for this monument..."
+                  : "Composing ambient nature sounds for this landscape..."}
+              </Text>
+            )}
           </View>
         </View>
       )}
 
       {/* Controls */}
       <View style={styles.controls}>
-        {/* NEW: Scanner Button */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Open scanner to detect artwork"
-          style={[styles.scannerButton, { backgroundColor: modeColor }]}
-          onPress={openScanner}
-          disabled={isProcessing}
-        >
-          <MaterialIcons name="document-scanner" size={28} color="#fff" />
-          <Text style={styles.scannerText}>Scan</Text>
-        </TouchableOpacity>
-
-        {/* Gallery */}
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Open image gallery"
-          style={[styles.secondaryButton, { borderColor: modeColor }]}
+          style={[styles.secondaryButton, { borderWidth: 2, borderColor: modeColor }]}
           onPress={pickImage}
           disabled={isProcessing}
         >
           <MaterialIcons name="photo-library" size={28} color="#fff" />
         </TouchableOpacity>
 
-        {/* Camera */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          accessibilityLabel="Take a photo"
-          style={[styles.captureButton, { borderColor: modeColor }]}
-          onPress={takePhoto}
-          disabled={isProcessing}
-        />
+        <View style={styles.captureWrap}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Take a photo"
+            style={[styles.captureButton, { borderColor: modeColor }]}
+            onPress={takePhoto}
+            disabled={isProcessing}
+          />
+          <Text style={styles.captureLabel}>Tap to capture</Text>
+        </View>
 
-        {/* Home */}
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel="Back to home"
-          style={[styles.secondaryButton, { borderColor: modeColor }]}
+          style={[styles.secondaryButton, { borderWidth: 2, borderColor: modeColor }]}
           onPress={() => router.replace('/')}
           disabled={isProcessing}
         >
@@ -625,7 +603,7 @@ export default function ScanScreen() {
           onPress={handleAnalyze}
           accessibilityLabel={`Analyze ${mode} image`}
         >
-          <MaterialIcons name="auto-awesome" size={24} color="#fff" />
+          <MaterialIcons name="auto-awesome" size={24} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.analyzeText}>Analyze Image</Text>
         </TouchableOpacity>
       )}
@@ -634,8 +612,15 @@ export default function ScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  preview: { flex: 1, width: '100%', resizeMode: 'contain' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#000' 
+  },
+  preview: { 
+    flex: 1, 
+    width: '100%', 
+    resizeMode: 'contain' 
+  },
   placeholder: {
     position: 'absolute',
     top: 80,
@@ -647,9 +632,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 30,
+    elevation: 30,
+    backgroundColor: 'transparent',
   },
-  placeholderText: { color: '#fff', fontSize: 20, marginTop: 16, fontWeight: '600' },
-  placeholderSubtext: { color: '#aaa', fontSize: 14, marginTop: 8, textAlign: 'center', paddingHorizontal: 40 },
+  placeholderText: { 
+    color: '#fff', 
+    fontSize: 20, 
+    marginTop: 16, 
+    fontWeight: '600' 
+  },
+  placeholderSubtext: { 
+    color: '#aaa', 
+    fontSize: 14, 
+    marginTop: 8, 
+    textAlign: 'center', 
+    paddingHorizontal: 40 
+  },
   controls: {
     height: 120,
     backgroundColor: '#000',
@@ -661,28 +660,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 28,
-  },
-  scannerButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  scannerText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
+    zIndex: 0,
   },
   secondaryButton: {
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 0,
   },
   captureButton: {
     width: 84,
@@ -690,6 +677,18 @@ const styles = StyleSheet.create({
     borderRadius: 42,
     borderWidth: 6,
     backgroundColor: '#fff',
+    zIndex: 0,
+  },
+  captureWrap: {
+    width: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  captureLabel: {
+    marginTop: 8,
+    color: '#fff',
+    fontSize: 13,
   },
   analyzeButton: {
     alignSelf: 'center',
@@ -699,18 +698,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  analyzeText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  analyzeText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
   loaderOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: 0, 
+    left: 0, 
+    right: 0, 
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 100,
   },
   loaderCard: {
     backgroundColor: '#111',
@@ -719,6 +722,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     maxWidth: '85%',
   },
-  loaderTitle: { color: '#fff', marginTop: 16, fontSize: 20, fontWeight: '700' },
-  loaderText: { color: '#aaa', marginTop: 12, fontSize: 16, textAlign: 'center' },
+  loaderTitle: { 
+    color: '#fff', 
+    marginTop: 16, 
+    fontSize: 20, 
+    fontWeight: '700' 
+  },
+  loaderText: { 
+    color: '#aaa', 
+    marginTop: 12, 
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  loaderSubtext: {
+    color: '#666',
+    marginTop: 8,
+    fontSize: 13,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
 });

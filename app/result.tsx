@@ -3,7 +3,8 @@ import { Audio } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// import { speakWithUnrealSpeech, stopUnrealSpeech } from './unrealSpeech';
 
 export default function ResultScreen() {
   const params = useLocalSearchParams();
@@ -16,6 +17,7 @@ export default function ResultScreen() {
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
   const [isPlayingHistorical, setIsPlayingHistorical] = useState(false);
   const [isPlayingImmersive, setIsPlayingImmersive] = useState(false);
+  const [showHistoricalTranscript, setShowHistoricalTranscript] = useState(false);
 
   useEffect(() => {
     // Auto-play music when the screen loads (if available)
@@ -23,10 +25,7 @@ export default function ResultScreen() {
       playMusic();
     }
 
-    // Optionally auto-narrate description for accessibility
-    if (description) {
-      AccessibilityInfo.announceForAccessibility('Description loaded.');
-    }
+    // TTS announcement disabled per user request
 
     return () => {
       if (sound && typeof sound.unloadAsync === 'function') {
@@ -34,7 +33,8 @@ export default function ResultScreen() {
       }
       Speech.stop();
     };
-  }, [audioUri, description]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUri, description, title]);
 
   const playMusic = async () => {
     try {
@@ -61,63 +61,95 @@ export default function ResultScreen() {
     }
   };
 
-  const onReadHistoricalDescription = () => {
+  const onReadHistoricalDescription = async () => {
     if (isPlayingHistorical) {
-      // Stop the speech
-      Speech.stop();
+      // Stop the Unreal Speech
+      // await stopUnrealSpeech();
       setIsPlayingHistorical(false);
     } else {
       // Stop immersive if playing
       if (isPlayingImmersive) {
-        Speech.stop();
+        // await stopUnrealSpeech();
         setIsPlayingImmersive(false);
       }
 
       const textToRead = historicalPrompt || description;
       if (textToRead) {
         setIsPlayingHistorical(true);
-        Speech.speak(textToRead, {
-          language: 'en-US',
-          onDone: () => setIsPlayingHistorical(false),
-          onStopped: () => setIsPlayingHistorical(false),
-          onError: () => setIsPlayingHistorical(false),
-        });
+        setShowHistoricalTranscript(true); // Show transcript when playing
+        // await speakWithUnrealSpeech(
+        //   textToRead,
+        //   { voice: 'Dan', speed: 0, pitch: 1.0 },
+        //   () => setIsPlayingHistorical(false),
+        //   (error) => {
+        //     console.error('Unreal Speech error:', error);
+        //     setIsPlayingHistorical(false);
+        //   }
+        // );
       }
     }
   };
 
-  const onReadImmersiveDescription = () => {
+  const onReadImmersiveDescription = async () => {
     if (isPlayingImmersive) {
-      // Stop the speech
-      Speech.stop();
+      // Stop the Unreal Speech
+      // await stopUnrealSpeech();
       setIsPlayingImmersive(false);
     } else {
       // Stop historical if playing
       if (isPlayingHistorical) {
-        Speech.stop();
+        // await stopUnrealSpeech();
         setIsPlayingHistorical(false);
       }
 
       const textToRead = immersivePrompt || description;
       if (textToRead) {
         setIsPlayingImmersive(true);
-        Speech.speak(textToRead, {
-          language: 'en-US',
-          onDone: () => setIsPlayingImmersive(false),
-          onStopped: () => setIsPlayingImmersive(false),
-          onError: () => setIsPlayingImmersive(false),
-        });
+        // await speakWithUnrealSpeech(
+        //   textToRead,
+        //   { voice: 'Dan', speed: 0, pitch: 1.0 },
+        //   () => setIsPlayingImmersive(false),
+        //   (error) => {
+        //     console.error('Unreal Speech error:', error);
+        //     setIsPlayingImmersive(false);
+        //   }
+        // );
       }
     }
   };
 
-  const onSave = () => {
-    AccessibilityInfo.announceForAccessibility('Saved to your favorites');
-    // TODO: persist to local storage or cloud
+  const onTakeAnother = () => {
+    router.push(('/scan/museum' as unknown) as any);
+  };
+
+  const onBackToHome = async () => {
+    try {
+      // Stop any playing music
+      if (sound && typeof sound.unloadAsync === 'function') {
+        await sound.unloadAsync();
+        setSound(null);
+        setIsPlayingMusic(false);
+      }
+
+      // Stop any Unreal Speech audio
+      // await stopUnrealSpeech();
+      setIsPlayingHistorical(false);
+      setIsPlayingImmersive(false);
+
+      // Stop default speech synthesis
+      Speech.stop();
+
+      // Navigate back to home
+      router.replace('/');
+    } catch (error) {
+      console.warn('Error stopping audio:', error);
+      // Navigate anyway even if audio stopping fails
+      router.replace('/');
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container} accessible accessibilityRole="summary">
+    <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerCard}>
         {imageUri ? (
           <View style={styles.imageWrap}>
@@ -127,11 +159,50 @@ export default function ResultScreen() {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.title}>{title}</Text>
-        {artist ? <Text style={styles.artist}>by {artist}</Text> : null}
-        {type ? <Text style={styles.type}>{type}</Text> : null}
+        <Text 
+          style={styles.title}
+          accessibilityRole="header"
+          accessibilityLabel={`Artwork title: ${title}`}
+        >
+          {title}
+        </Text>
+        {artist ? (
+          <Text 
+            style={styles.artist}
+            accessibilityLabel={`Artist: ${artist}`}
+          >
+            by {artist}
+          </Text>
+        ) : null}
+        {type ? (
+          <Text 
+            style={styles.type}
+            accessibilityLabel={`Artwork type: ${type}`}
+          >
+            {type}
+          </Text>
+        ) : null}
 
-        <View style={styles.pillsRow}>
+        <View 
+          style={styles.pillsRow}
+          accessible={true}
+          accessibilityRole="text"
+          accessibilityLabel={`Emotions: ${(() => {
+            const raw = emotions as any;
+            let list: string[] = [];
+            if (Array.isArray(raw)) list = raw;
+            else if (typeof raw === 'string') {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) list = parsed.map(String);
+                else list = [raw];
+              } catch {
+                list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+              }
+            }
+            return list.join(', ');
+          })()}`}
+        >
           {(() => {
             // normalize emotions which may arrive as an array or a serialized string from router params
             const raw = emotions as any;
@@ -155,17 +226,20 @@ export default function ResultScreen() {
           })()}
         </View>
 
-        <View style={styles.descriptionCard}>
-          <Text style={styles.sectionTitle}>Description</Text>
-          <Text style={styles.description}>{description}</Text>
-        </View>
-
         <View style={styles.audioCard}>
-          <Text style={styles.sectionTitleLight}>Audio Experience</Text>
+          <Text 
+            style={styles.sectionTitleLight}
+            accessibilityRole="header"
+          >
+            Audio Experience
+          </Text>
           {audioUri && (
             <View style={styles.musicStatus}>
               <MaterialIcons name="music-note" size={18} color="#9CA3AF" />
-              <Text style={styles.musicStatusText}>
+              <Text 
+                style={styles.musicStatusText}
+                accessibilityLabel={isPlayingMusic ? 'Background music is currently playing' : 'Background music has finished playing'}
+              >
                 {isPlayingMusic ? '🎵 Music playing...' : '🎵 Music auto-played'}
               </Text>
             </View>
@@ -174,7 +248,8 @@ export default function ResultScreen() {
             <TouchableOpacity
               style={styles.audioButtonPrimary}
               accessibilityRole="button"
-              accessibilityLabel={isPlayingHistorical ? "Pause historical description" : "Read historical description aloud"}
+              accessibilityLabel={isPlayingHistorical ? "Pause" : "Historical description"}
+              accessibilityHint={isPlayingHistorical ? "Double tap to pause the historical description" : "Double tap to hear a historical perspective of this artwork"}
               onPress={onReadHistoricalDescription}
             >
               <MaterialIcons
@@ -190,7 +265,8 @@ export default function ResultScreen() {
             <TouchableOpacity
               style={styles.audioButtonSecondary}
               accessibilityRole="button"
-              accessibilityLabel={isPlayingImmersive ? "Pause immersive description" : "Read immersive description aloud"}
+              accessibilityLabel={isPlayingImmersive ? "Pause" : "Immersive description"}
+              accessibilityHint={isPlayingImmersive ? "Double tap to pause the immersive description" : "Double tap to hear an immersive, sensory perspective of this artwork"}
               onPress={onReadImmersiveDescription}
             >
               <MaterialIcons
@@ -206,15 +282,52 @@ export default function ResultScreen() {
           <Text style={styles.audioHint}>
             Tap buttons to hear different perspectives on this artwork
           </Text>
+
+          {showHistoricalTranscript && (
+            <View style={styles.transcriptSection}>
+              <TouchableOpacity 
+                style={styles.transcriptToggle}
+                onPress={() => setShowHistoricalTranscript(!showHistoricalTranscript)}
+                accessibilityRole="button"
+                accessibilityLabel="Transcript"
+                accessibilityHint="Double tap to collapse the text transcript"
+              >
+                <Text style={styles.transcriptTitle}>Transcript</Text>
+                <MaterialIcons 
+                  name="expand-less"
+                  size={24} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+              <Text 
+                style={styles.transcriptText}
+                accessibilityLabel={`Transcript: ${historicalPrompt || description}`}
+              >
+                {historicalPrompt || description}
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.rowActions}>
-          <TouchableOpacity style={styles.actionButton} accessibilityRole="button" onPress={onSave}>
-            <MaterialIcons name="bookmark" size={20} color="#fff" />
-            <Text style={styles.actionText}>Save</Text>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            accessibilityRole="button"
+            accessibilityLabel="Take another picture"
+            accessibilityHint="Double tap to return to camera to scan another artwork"
+            onPress={onTakeAnother}
+          >
+            <MaterialIcons name="photo-camera" size={20} color="#fff" />
+            <Text style={styles.actionText}>Take Another Picture</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionButtonOutline} accessibilityRole="button" onPress={() => router.replace('/')}>
+          
+          <TouchableOpacity 
+            style={styles.actionButtonOutline} 
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+            accessibilityHint="Double tap to return to the home screen"
+            onPress={onBackToHome}
+          >
             <Text style={styles.actionTextOutline}>Back to Home</Text>
           </TouchableOpacity>
         </View>
@@ -251,6 +364,8 @@ const styles = StyleSheet.create({
   pill: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, marginRight: 8, marginBottom: 8 },
   pillText: { color: '#fff', fontWeight: '700' },
   descriptionCard: { backgroundColor: '#0b1220', borderRadius: 12, padding: 16, marginTop: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  transcriptCard: { backgroundColor: '#0b1220', borderRadius: 12, padding: 16, marginTop: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
+  transcriptHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
   sectionTitleLight: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
   description: { color: '#cbd5e1', fontSize: 16, lineHeight: 22 },
@@ -262,6 +377,10 @@ const styles = StyleSheet.create({
   audioButtonSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#5B21B6', paddingVertical: 14, borderRadius: 10 },
   audioButtonText: { color: '#fff', fontWeight: '700', marginLeft: 6 },
   audioHint: { color: '#9CA3AF', marginTop: 12, textAlign: 'center' },
+  transcriptSection: { marginTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 16 },
+  transcriptToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  transcriptTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  transcriptText: { color: '#cbd5e1', fontSize: 14, lineHeight: 20 },
   rowActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 },
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#111827', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10 },
   actionText: { color: '#fff', fontWeight: '700' },

@@ -1,6 +1,5 @@
 // // utils/analyzeImageWithNavigator.ts
 
-
 // // ============= TYPE DEFINITIONS =============
 // interface ChatCompletionResponse {
 //     choices: Array<{
@@ -538,19 +537,9 @@
 // // Export default for easy import
 // export default analyzeMuseumImage;
 
-
-
-
-
-
-
-
-
-
 // utils/analyzeImageWithNavigator.ts
 // Updated to support Museum, Monument, and Landscape modes
 
-import * as FileSystem from 'expo-file-system';
 
 // ============= TYPE DEFINITIONS =============
 interface ChatCompletionResponse {
@@ -592,9 +581,15 @@ interface SunoStatusResponse {
         duration?: number;
       }>;
     };
-    status: 'PENDING' | 'TEXT_SUCCESS' | 'FIRST_SUCCESS' | 'SUCCESS' | 
-            'CREATE_TASK_FAILED' | 'GENERATE_AUDIO_FAILED' | 
-            'CALLBACK_EXCEPTION' | 'SENSITIVE_WORD_ERROR';
+    status:
+      | "PENDING"
+      | "TEXT_SUCCESS"
+      | "FIRST_SUCCESS"
+      | "SUCCESS"
+      | "CREATE_TASK_FAILED"
+      | "GENERATE_AUDIO_FAILED"
+      | "CALLBACK_EXCEPTION"
+      | "SENSITIVE_WORD_ERROR";
     type?: string;
     operationType?: string;
     errorCode?: number | null;
@@ -604,26 +599,26 @@ interface SunoStatusResponse {
 
 // Generic result type that works for all modes
 export interface AnalysisResult {
-  paintingName: string;
-  name: string;           // Painting name / Monument name / Landscape name
-  creator: string;        // Artist / Architect or Culture / Location
-  category: string;       // Genre / Monument Type / Landscape Type
+  paintingName?: string; // Only used for museum mode
+  name: string; // Painting name / Monument name / Landscape name
+  creator: string; // Artist / Architect or Culture / Location
+  category: string; // Genre / Monument Type / Landscape Type
   historicalPrompt: string; // max 500 chars
-  immersivePrompt: string;  // max 400 chars
+  immersivePrompt: string; // max 400 chars
   audioUri: string | null;
   imageUri: string;
-  mode: 'museum' | 'monuments' | 'landscape';
+  mode: "museum" | "monuments" | "landscape";
 }
 
 // Legacy type for backwards compatibility
 export type MuseumAnalysisResult = AnalysisResult;
 
 // ============= API CONFIGURATION =============
-const NAVIGATOR_API_KEY = 'sk-SwCA-nMn6Z1Zz1F0UXDzgQ';
-const SUNO_API_KEY = '4acad3fb927c19ca28eadf14383da5e7';
-const NAVIGATOR_BASE_URL = 'https://api.ai.it.ufl.edu/v1/';
-const SUNO_BASE_URL = 'https://api.sunoapi.org';
-const MODEL = 'mistral-small-3.1';
+const NAVIGATOR_API_KEY = "sk-SwCA-nMn6Z1Zz1F0UXDzgQ";
+const SUNO_API_KEY = "209dd16baa1288929326217f6c9b4a59";
+const NAVIGATOR_BASE_URL = "https://api.ai.it.ufl.edu/v1/";
+const SUNO_BASE_URL = "https://api.sunoapi.org";
+const MODEL = "mistral-small-3.1";
 
 // ============= HELPER: Convert Image to Base64 =============
 const convertImageToBase64 = async (uri: string): Promise<string> => {
@@ -634,11 +629,11 @@ const convertImageToBase64 = async (uri: string): Promise<string> => {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          const base64 = reader.result.split(',')[1];
+        if (typeof reader.result === "string") {
+          const base64 = reader.result.split(",")[1];
           resolve(base64);
         } else {
-          reject(new Error('Failed to convert image to base64'));
+          reject(new Error("Failed to convert image to base64"));
         }
       };
       reader.onerror = reject;
@@ -650,8 +645,8 @@ const convertImageToBase64 = async (uri: string): Promise<string> => {
 };
 
 // ============= MODE-SPECIFIC PROMPTS =============
-const getModePrompts = (mode: 'museum' | 'monuments' | 'landscape') => {
-  if (mode === 'museum') {
+const getModePrompts = (mode: "museum" | "monuments" | "landscape") => {
+  if (mode === "museum") {
     return {
       metadata: `Analyze this artwork and provide ONLY the following information in this EXACT JSON format (no additional text):
 {
@@ -678,10 +673,10 @@ IMPORTANT: Your response must be EXACTLY 500 characters or less. Be concise and 
 Write 3-4 sentences in present tense, as if describing a living moment. Focus on sensory details and emotional weight.
 
 IMPORTANT: Your response must be EXACTLY 400 characters or less. Focus on sensory details and emotional weight.`,
-      musicStyle: 'Classical',
-      musicNegativeTags: 'Heavy Metal, Upbeat Drums, Rock'
+      musicStyle: "Classical",
+      musicNegativeTags: "Heavy Metal, Upbeat Drums, Rock",
     };
-  } else if (mode === 'monuments') {
+  } else if (mode === "monuments") {
     return {
       metadata: `Analyze this monument/landmark and provide ONLY the following information in this EXACT JSON format (no additional text):
 {
@@ -708,10 +703,11 @@ IMPORTANT: Your response must be EXACTLY 500 characters or less. Be informative 
 Write 3-4 sentences in present tense that transport the reader to the location.
 
 IMPORTANT: Your response must be EXACTLY 400 characters or less. Focus on the immersive experience.`,
-      musicStyle: 'Epic Orchestral, Cinematic',
-      musicNegativeTags: 'Pop, Dance, Electronic'
+      musicStyle: "Epic Orchestral, Cinematic",
+      musicNegativeTags: "Pop, Dance, Electronic",
     };
-  } else { // landscape
+  } else {
+    // landscape
     return {
       metadata: `Analyze this landscape/natural scene and provide ONLY the following information in this EXACT JSON format (no additional text):
 {
@@ -738,8 +734,8 @@ IMPORTANT: Your response must be EXACTLY 500 characters or less. Be descriptive 
 Write 3-4 sentences in present tense that bring the landscape to life.
 
 IMPORTANT: Your response must be EXACTLY 400 characters or less. Focus on sensory immersion.`,
-      musicStyle: 'Ambient, Nature Sounds, Peaceful',
-      musicNegativeTags: 'Heavy Metal, Aggressive, Loud Drums'
+      musicStyle: "Ambient, Nature Sounds, Peaceful",
+      musicNegativeTags: "Heavy Metal, Aggressive, Loud Drums",
     };
   }
 };
@@ -747,7 +743,7 @@ IMPORTANT: Your response must be EXACTLY 400 characters or less. Focus on sensor
 // ============= MAIN ANALYSIS FUNCTION =============
 async function analyzeWithNavigator(
   imageUri: string,
-  mode: 'museum' | 'monuments' | 'landscape'
+  mode: "museum" | "monuments" | "landscape",
 ): Promise<{
   name: string;
   creator: string;
@@ -764,108 +760,125 @@ async function analyzeWithNavigator(
 
     // PROMPT 1: Get metadata (name, creator, category)
     console.log(`🎨 Step 2: Getting ${mode} metadata...`);
-    const metadataResponse = await fetch(NAVIGATOR_BASE_URL + 'chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NAVIGATOR_API_KEY}`,
+    const metadataResponse = await fetch(
+      NAVIGATOR_BASE_URL + "chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${NAVIGATOR_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompts.metadata },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompts.metadata },
-              { type: 'image_url', image_url: { url: imageDataUrl } },
-            ],
-          },
-        ],
-      }),
-    });
+    );
 
     if (!metadataResponse.ok) {
       throw new Error(`Failed to get ${mode} metadata`);
     }
 
     const metadataData: ChatCompletionResponse = await metadataResponse.json();
-    const metadataContent = metadataData.choices[0]?.message?.content || '';
-    
+    const metadataContent = metadataData.choices[0]?.message?.content || "";
+
     let metadata;
     try {
       metadata = JSON.parse(metadataContent);
     } catch {
       metadata = {
-        name: `Unknown ${mode === 'museum' ? 'Artwork' : mode === 'monuments' ? 'Monument' : 'Landscape'}`,
-        creator: mode === 'museum' ? 'Unknown Artist' : mode === 'monuments' ? 'Unknown' : 'Nature',
-        category: `Unknown ${mode === 'museum' ? 'Genre' : 'Type'}`
+        name: `Unknown ${mode === "museum" ? "Artwork" : mode === "monuments" ? "Monument" : "Landscape"}`,
+        creator:
+          mode === "museum"
+            ? "Unknown Artist"
+            : mode === "monuments"
+              ? "Unknown"
+              : "Nature",
+        category: `Unknown ${mode === "museum" ? "Genre" : "Type"}`,
       };
     }
 
     // PROMPT 2: Historical/Descriptive Analysis (500 chars)
     console.log(`🎨 Step 3: Getting historical description for ${mode}...`);
-    const historicalResponse = await fetch(NAVIGATOR_BASE_URL + 'chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NAVIGATOR_API_KEY}`,
+    const historicalResponse = await fetch(
+      NAVIGATOR_BASE_URL + "chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${NAVIGATOR_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompts.historical },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompts.historical },
-              { type: 'image_url', image_url: { url: imageDataUrl } },
-            ],
-          },
-        ],
-      }),
-    });
+    );
 
     if (!historicalResponse.ok) {
-      throw new Error('Failed to get historical description');
+      throw new Error("Failed to get historical description");
     }
 
-    const historicalData: ChatCompletionResponse = await historicalResponse.json();
-    let historicalDescription = historicalData.choices[0]?.message?.content || '';
-    
+    const historicalData: ChatCompletionResponse =
+      await historicalResponse.json();
+    let historicalDescription =
+      historicalData.choices[0]?.message?.content || "";
+
     if (historicalDescription.length > 500) {
-      historicalDescription = historicalDescription.substring(0, 497) + '...';
+      historicalDescription = historicalDescription.substring(0, 497) + "...";
     }
 
     // PROMPT 3: Immersive/Emotional Description (400 chars)
     console.log(`🎨 Step 4: Getting immersive description for ${mode}...`);
-    const immersiveResponse = await fetch(NAVIGATOR_BASE_URL + 'chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NAVIGATOR_API_KEY}`,
+    const immersiveResponse = await fetch(
+      NAVIGATOR_BASE_URL + "chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${NAVIGATOR_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompts.immersive },
+                { type: "image_url", image_url: { url: imageDataUrl } },
+              ],
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompts.immersive },
-              { type: 'image_url', image_url: { url: imageDataUrl } },
-            ],
-          },
-        ],
-      }),
-    });
+    );
 
     if (!immersiveResponse.ok) {
-      throw new Error('Failed to get immersive description');
+      throw new Error("Failed to get immersive description");
     }
 
-    const immersiveData: ChatCompletionResponse = await immersiveResponse.json();
-    let immersiveDescription = immersiveData.choices[0]?.message?.content || '';
-    
+    const immersiveData: ChatCompletionResponse =
+      await immersiveResponse.json();
+    let immersiveDescription = immersiveData.choices[0]?.message?.content || "";
+
     if (immersiveDescription.length > 400) {
-      immersiveDescription = immersiveDescription.substring(0, 397) + '...';
+      immersiveDescription = immersiveDescription.substring(0, 397) + "...";
     }
 
     console.log(`✅ ${mode} analysis complete:`, {
@@ -873,7 +886,7 @@ async function analyzeWithNavigator(
       creator: metadata.creator,
       category: metadata.category,
       historicalLength: historicalDescription.length,
-      immersiveLength: immersiveDescription.length
+      immersiveLength: immersiveDescription.length,
     });
 
     return {
@@ -883,29 +896,30 @@ async function analyzeWithNavigator(
       historicalPrompt: historicalDescription,
       immersivePrompt: immersiveDescription,
     };
-
   } catch (error) {
     console.error(`❌ Navigator API ${mode} analysis error:`, error);
-    throw new Error(`Failed to analyze ${mode}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to analyze ${mode}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   }
 }
 
 // ============= MUSIC GENERATION =============
 async function generateMusicWithSuno(
   prompt: string,
-  mode: 'museum' | 'monuments' | 'landscape'
+  mode: "museum" | "monuments" | "landscape",
 ): Promise<string | null> {
   try {
     console.log(`🎵 Step 5: Starting Suno music generation for ${mode}...`);
-    console.log('📝 Music prompt:', prompt);
+    console.log("📝 Music prompt:", prompt);
 
     const prompts = getModePrompts(mode);
 
     const response = await fetch(`${SUNO_BASE_URL}/api/v1/generate`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${SUNO_API_KEY}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${SUNO_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         prompt: prompt,
@@ -913,9 +927,10 @@ async function generateMusicWithSuno(
         instrumental: true,
         style: prompts.musicStyle,
         negativeTags: prompts.musicNegativeTags,
-        model: 'V4_5',
+        model: "V4_5",
         audioWeight: 0.65,
-        callBackUrl: 'https://webhook.site/#!/view/00000000-0000-0000-0000-000000000000',
+        callBackUrl:
+          "https://webhook.site/#!/view/00000000-0000-0000-0000-000000000000",
       }),
     });
 
@@ -924,7 +939,7 @@ async function generateMusicWithSuno(
     }
 
     const result: SunoGenerateResponse = await response.json();
-    console.log('📡 Suno API Response:', JSON.stringify(result, null, 2));
+    console.log("📡 Suno API Response:", JSON.stringify(result, null, 2));
 
     if (result.code !== 200) {
       throw new Error(`Suno API Error (${result.code}): ${result.msg}`);
@@ -932,20 +947,19 @@ async function generateMusicWithSuno(
 
     const taskId = result.data?.taskId;
     if (!taskId) {
-      throw new Error('No taskId returned from Suno API');
+      throw new Error("No taskId returned from Suno API");
     }
 
-    console.log('✅ Task created successfully');
+    console.log("✅ Task created successfully");
     console.log(`   Task ID: ${taskId}`);
-    console.log('⏳ Starting polling for completion...');
+    console.log("⏳ Starting polling for completion...");
 
     const audioUrl = await pollSunoTaskStatus(taskId);
     return audioUrl;
-
   } catch (error) {
-    console.error('❌ Suno music generation error:', error);
+    console.error("❌ Suno music generation error:", error);
     if (error instanceof Error) {
-      console.error('   Error details:', error.message);
+      console.error("   Error details:", error.message);
     }
     return null;
   }
@@ -957,30 +971,34 @@ async function pollSunoTaskStatus(taskId: string): Promise<string | null> {
   const pollInterval = 5000;
   let attempts = 0;
 
-  console.log(`⏰ Starting polling (max ${maxAttempts * pollInterval / 1000 / 60} minutes)...`);
+  console.log(
+    `⏰ Starting polling (max ${(maxAttempts * pollInterval) / 1000 / 60} minutes)...`,
+  );
 
   while (attempts < maxAttempts) {
     try {
-      console.log(`🔍 Checking task status (attempt ${attempts + 1}/${maxAttempts})...`);
+      console.log(
+        `🔍 Checking task status (attempt ${attempts + 1}/${maxAttempts})...`,
+      );
 
       const response = await fetch(
         `${SUNO_BASE_URL}/api/v1/generate/record-info?taskId=${taskId}`,
         {
           headers: {
-            'Authorization': `Bearer ${SUNO_API_KEY}`,
+            Authorization: `Bearer ${SUNO_API_KEY}`,
           },
-        }
+        },
       );
 
       if (!response.ok) {
         console.warn(`⚠️  API returned status ${response.status}, retrying...`);
         attempts++;
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
         continue;
       }
 
       const result = await response.json();
-      
+
       if (result.code !== 200) {
         console.error(`❌ API Error: ${result.msg}`);
         return null;
@@ -988,81 +1006,158 @@ async function pollSunoTaskStatus(taskId: string): Promise<string | null> {
 
       const status = result.data?.status;
 
-      console.log(`📊 Status: ${status} | Attempt: ${attempts + 1}/${maxAttempts} | Time: ${Math.round((attempts + 1) * pollInterval / 1000)}s`);
+      console.log(
+        `📊 Status: ${status} | Attempt: ${attempts + 1}/${maxAttempts} | Time: ${Math.round(((attempts + 1) * pollInterval) / 1000)}s`,
+      );
 
-      if (status === 'SUCCESS') {
+      if (status === "SUCCESS") {
         const sunoData = result.data.response?.sunoData;
         if (sunoData && sunoData.length > 0) {
           const firstTrack = sunoData[0];
           const audioUrl = firstTrack.audioUrl;
-          
-          console.log('✅ Music generation SUCCESS!');
-          console.log(`   Title: ${firstTrack.title || 'Untitled'}`);
+
+          console.log("✅ Music generation SUCCESS!");
+          console.log(`   Title: ${firstTrack.title || "Untitled"}`);
           console.log(`   Duration: ${firstTrack.duration || 0}s`);
           console.log(`   Audio URL: ${audioUrl}`);
-          console.log(`⏱️  Total time: ${(attempts * pollInterval) / 1000} seconds`);
-          
+          console.log(
+            `⏱️  Total time: ${(attempts * pollInterval) / 1000} seconds`,
+          );
+
           return audioUrl;
         } else {
-          console.error('❌ SUCCESS status but no audio data found');
+          console.error("❌ SUCCESS status but no audio data found");
           return null;
         }
       }
 
-      if (status === 'FIRST_SUCCESS') {
-        console.log('🎵 First track completed, waiting for all tracks...');
+      if (status === "FIRST_SUCCESS") {
+        console.log("🎵 First track completed, waiting for all tracks...");
       }
 
-      if (status === 'TEXT_SUCCESS') {
-        console.log('📝 Text generation completed, waiting for audio...');
+      if (status === "TEXT_SUCCESS") {
+        console.log("📝 Text generation completed, waiting for audio...");
       }
 
-      if (status === 'PENDING') {
-        console.log(`⏳ Task pending... (${Math.round((attempts + 1) * pollInterval / 1000)}s elapsed)`);
+      if (status === "PENDING") {
+        console.log(
+          `⏳ Task pending... (${Math.round(((attempts + 1) * pollInterval) / 1000)}s elapsed)`,
+        );
       }
 
-      if (status === 'CREATE_TASK_FAILED' || 
-          status === 'GENERATE_AUDIO_FAILED' || 
-          status === 'CALLBACK_EXCEPTION' || 
-          status === 'SENSITIVE_WORD_ERROR') {
+      if (
+        status === "CREATE_TASK_FAILED" ||
+        status === "GENERATE_AUDIO_FAILED" ||
+        status === "CALLBACK_EXCEPTION" ||
+        status === "SENSITIVE_WORD_ERROR"
+      ) {
         console.error(`❌ Generation failed with status: ${status}`);
-        console.error(`   Error: ${result.data?.errorMessage || 'Unknown error'}`);
+        console.error(
+          `   Error: ${result.data?.errorMessage || "Unknown error"}`,
+        );
         return null;
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
       attempts++;
-
     } catch (error) {
-      console.error('❌ Error checking task status:', error);
-      console.log('🔄 Retrying in 5 seconds...');
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      console.error("❌ Error checking task status:", error);
+      console.log("🔄 Retrying in 5 seconds...");
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
       attempts++;
     }
   }
 
-  console.error(`❌ Music generation timeout after ${maxAttempts * pollInterval / 1000 / 60} minutes`);
+  console.error(
+    `❌ Music generation timeout after ${(maxAttempts * pollInterval) / 1000 / 60} minutes`,
+  );
   return null;
 }
 
 // ============= MAIN EXPORTS =============
 
 /**
+ * Quick metadata extraction - just get the name without full analysis
+ * Used for database cache lookup
+ */
+export async function getQuickMetadata(
+  imageUri: string,
+  mode: "museum" | "monuments" | "landscape",
+): Promise<{ name: string } | null> {
+  try {
+    console.log(`🔍 Quick metadata extraction for ${mode} mode...`);
+
+    const base64Image = await convertImageToBase64(imageUri);
+    const prompts = getModePrompts(mode);
+
+    const response = await fetch(`${NAVIGATOR_BASE_URL}chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${NAVIGATOR_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Identify this ${mode === "museum" ? "artwork" : mode === "monuments" ? "monument" : "landscape"} and provide ONLY its name. Return just the name, nothing else.`,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 50,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Navigator API error: ${response.status}`);
+    }
+
+    const data: ChatCompletionResponse = await response.json();
+    const name = data.choices[0]?.message?.content?.trim();
+
+    if (!name) {
+      return null;
+    }
+
+    console.log(`✅ Quick identification: ${name}`);
+    return { name };
+  } catch (error) {
+    console.warn("⚠️  Quick metadata extraction failed:", error);
+    return null;
+  }
+}
+
+/**
  * Analyze any image (museum, monument, or landscape)
  */
 export async function analyzeImage(
   imageUri: string,
-  mode: 'museum' | 'monuments' | 'landscape'
+  mode: "museum" | "monuments" | "landscape",
 ): Promise<AnalysisResult> {
   try {
     console.log(`🚀 Starting complete ${mode} image analysis...`);
-    console.log('Image URI:', imageUri);
+    console.log("Image URI:", imageUri);
 
     // Step 1-4: Analyze with Navigator AI
     const analysis = await analyzeWithNavigator(imageUri, mode);
 
     // Step 5-6: Generate music with Suno API
-    const audioUri = await generateMusicWithSuno(analysis.immersivePrompt, mode);
+    const audioUri = await generateMusicWithSuno(
+      analysis.immersivePrompt,
+      mode,
+    );
 
     const result: AnalysisResult = {
       name: analysis.name,
@@ -1076,13 +1171,12 @@ export async function analyzeImage(
     };
 
     console.log(`🎉 Complete ${mode} analysis finished!`);
-    console.log('Result:', {
+    console.log("Result:", {
       ...result,
-      audioUri: audioUri ? '✅ Generated' : '❌ Failed'
+      audioUri: audioUri ? "✅ Generated" : "❌ Failed",
     });
 
     return result;
-
   } catch (error) {
     console.error(`❌ Complete ${mode} analysis failed:`, error);
     throw error;
@@ -1090,8 +1184,10 @@ export async function analyzeImage(
 }
 
 // Legacy export for backwards compatibility
-export async function analyzeMuseumImage(imageUri: string): Promise<AnalysisResult> {
-  return analyzeImage(imageUri, 'museum');
+export async function analyzeMuseumImage(
+  imageUri: string,
+): Promise<AnalysisResult> {
+  return analyzeImage(imageUri, "museum");
 }
 
 export default analyzeImage;
