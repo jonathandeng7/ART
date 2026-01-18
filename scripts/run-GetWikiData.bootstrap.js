@@ -22,12 +22,15 @@ async function run() {
       throw new Error('getWikiData export not found in ../app/getWikiData');
     }
 
-    const titles = ['Mona Lisa', 'Eiffel Tower', 'Mount Everest'];
+    // Optionally set ARTIST env var to refine searches, e.g.
+    // ARTIST="Leonardo da Vinci" node scripts/run-getWikiData.bootstrap.js
+    const artist = process.env.ARTIST || null;
+    const titles = ['The Nightmare','Nocturne: Blue and Gold - Old Battersea Bridge', 'The Last Supper', 'Yosemite Valley', "The Scream", "Large Blue Horses", "Ben Hill Griffin Stadium"];
     for (const title of titles) {
-      console.log(`\n--- Fetching (bootstrap): ${title} ---`);
-      const data = await getWikiData(title, 'en');
-      console.log(JSON.stringify(data, null, 2));
-    }
+        console.log(`\n--- Fetching (bootstrap): ${title} ${artist ? `(artist: ${artist})` : ''} ---`);
+        const data = await getWikiData(title, 'en', artist);
+        console.log(JSON.stringify(data, null, 2));
+      }
   } catch (err) {
     console.error('Error in bootstrap:', err);
     process.exit(1);
