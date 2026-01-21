@@ -68,6 +68,7 @@ export default function RealtimeVisionPage() {
 
   const handleAnalyzeDetection = async (detection: Detection) => {
     if (analyzingRef.current) {
+      console.log("⚠️ Analysis already in progress, skipping...");
       return;
     }
 
@@ -83,52 +84,138 @@ export default function RealtimeVisionPage() {
       console.log("📸 Step 1: Capturing frame from video...");
       const imageDataUrl = captureFrame();
       if (!imageDataUrl) {
-        throw new Error("Failed to capture frame");
+        throw new Error(
+          "Failed to capture frame - video element may not be ready",
+        );
       }
-      console.log("✅ Frame captured successfully");
+      console.log(
+        "✅ Frame captured successfully, size:",
+        imageDataUrl.length,
+        "chars",
+      );
 
       // Stop Overshoot stream before heavy processing
       console.log("⏸️ Pausing Overshoot stream during analysis...");
-      await stop();
+      try {
+        await stop();
+        console.log("✅ Overshoot paused");
+      } catch (stopError) {
+        console.warn("⚠️ Could not pause Overshoot:", stopError);
+        // Continue anyway
+      }
 
-      console.log("🔍 Step 2: Starting AI analysis pipeline...");
-      const analysis = await analyzeImage(imageDataUrl, detection.type);
-      console.log("✅ Analysis complete:", analysis.title);
+      console.log("🔍 Step 2: Processing Overshoot detection...");
+      console.log("   Mode:", detection.type);
+      console.log("   Description:", detection.description);
 
-      console.log("🚀 Step 3: Navigating to results page...");
-      // Store data in sessionStorage to avoid HTTP 431 error (URL too large)
+      // Extract artwork name from Overshoot description
+      // e.g., "A person holding a smartphone displaying an image of the Mona Lisa painting" → "Mona Lisa"
+      const extractArtworkName = (description: string): string => {
+        // Common patterns in Overshoot descriptions
+        const patterns = [
+          /(?:image of |painting of |photograph of |picture of )(?:the |a )?([^,\.]+?)(?:\s+painting|\s+photograph|\s+artwork|\s+sculpture|\.|\,|$)/i,
+          /(?:the |a )?([A-Z][^,\.]+?)(?:\s+painting|\s+photograph|\s+artwork|\s+sculpture)/i,
+        ];
+
+        for (const pattern of patterns) {
+          const match = description.match(pattern);
+          if (match && match[1]) {
+            return match[1].trim();
+          }
+        }
+
+        // Fallback: return full description
+        return description;
+      };
+
+      const artworkName = extractArtworkName(detection.description);
+      console.log("   Extracted artwork name:", artworkName);
+
+      // Show initial fast result, then enrich in background
       const resultId = `result-${Date.now()}`;
-      sessionStorage.setItem(
-        resultId,
-        JSON.stringify({
-          imageUri: imageDataUrl,
-          title: analysis.title,
-          artist: analysis.artist,
-          type: analysis.type,
-          description: analysis.description,
-          historicalPrompt: analysis.historicalPrompt || "",
-          immersivePrompt: analysis.immersivePrompt || "",
-          emotions: analysis.emotions,
-          audioUri: analysis.audioUri || "",
-          mode: detection.type,
-        }),
-      );
 
+      // Initial data (fast path - shows immediately)
+      const initialData = {
+        imageUri: imageDataUrl.substring(0, 100000),
+        title: artworkName,
+        artist: "Loading...",
+        type: detection.type,
+        description: detection.description,
+        historicalPrompt: "Loading historical context...",
+        immersivePrompt: "Loading immersive experience...",
+        emotions: ["curious", "engaged"],
+        audioUri: null,
+        mode: detection.type,
+        isEnriching: true, // Flag to show loading state on result page
+      };
+
+      console.log("💾 Storing initial result in sessionStorage");
+      sessionStorage.setItem(resultId, JSON.stringify(initialData));
+
+      console.log("🧭 Navigating to result page (will enrich in background)");
       router.push(`/result?id=${resultId}`);
+
+      // Background enrichment: Get detailed context and generate music
+      console.log("🎨 Starting background enrichment (Navigator + Suno)...");
+      try {
+        const enrichedAnalysis = await analyzeImage(
+          imageDataUrl,
+          detection.type,
+          detection.description,
+        );
+
+        // Update sessionStorage with enriched data
+        const enrichedData = {
+          imageUri: imageDataUrl.substring(0, 100000),
+          title: enrichedAnalysis.title || artworkName,
+          artist: enrichedAnalysis.artist || "Unknown Artist",
+          type: enrichedAnalysis.type || detection.type,
+          description: enrichedAnalysis.description || detection.description,
+          historicalPrompt: enrichedAnalysis.historicalPrompt || "",
+          immersivePrompt: enrichedAnalysis.immersivePrompt || "",
+          emotions: enrichedAnalysis.emotions || ["curious", "engaged"],
+          audioUri: enrichedAnalysis.audioUri || null,
+          mode: detection.type,
+          isEnriching: false,
+        };
+
+        sessionStorage.setItem(resultId, JSON.stringify(enrichedData));
+        console.log("✅ Background enrichment complete");
+
+        // Trigger a custom event to notify the result page to refresh
+        window.dispatchEvent(
+          new CustomEvent("artwork-enriched", { detail: { resultId } }),
+        );
+      } catch (enrichmentError) {
+        console.error(
+          "⚠️ Background enrichment failed (non-fatal):",
+          enrichmentError,
+        );
+        // Keep the initial fast data - user already has something to see
+      }
     } catch (error) {
       console.error("❌ Analysis pipeline failed:", error);
       if (error instanceof Error) {
+        console.error("   Error name:", error.name);
         console.error("   Error message:", error.message);
         console.error("   Stack:", error.stack);
       }
       alert(
-        `Failed to analyze artwork: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Failed to analyze artwork: ${error instanceof Error ? error.message : "Unknown error"}\n\nCheck console for details.`,
       );
       setDetections((prev) =>
         prev.map((d) =>
           d.timestamp === detection.timestamp ? { ...d, analyzing: false } : d,
         ),
       );
+
+      // Restart Overshoot
+      console.log("🔄 Restarting Overshoot after error...");
+      try {
+        await start();
+      } catch (restartError) {
+        console.error("❌ Could not restart Overshoot:", restartError);
+      }
     } finally {
       setIsAnalyzing(false);
       analyzingRef.current = false;
@@ -203,21 +290,21 @@ export default function RealtimeVisionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
-      <header className="border-b border-gray-700 bg-gray-900/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200">
+      <header className="border-b border-gray-300 bg-white/80 backdrop-blur-md shadow-sm">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-white">
-                Real-Time Artwork Detection
+              <h1 className="text-3xl font-display text-gray-900 tracking-tight">
+                Real-Time Detection
               </h1>
-              <p className="text-gray-400 text-sm mt-1">
+              <p className="text-gray-600 text-sm mt-0.5 font-body tracking-normal">
                 Point your camera at artwork for instant AI analysis
               </p>
             </div>
             <button
               onClick={() => router.push("/")}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-900 transition-all duration-300 font-medium border border-gray-400"
             >
               <Home className="w-5 h-5" />
               Home
@@ -229,17 +316,17 @@ export default function RealtimeVisionPage() {
       <main className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <div className="bg-gray-800 rounded-xl p-4 mb-4">
+            <div className="bg-white/60 backdrop-blur-md rounded-2xl p-6 mb-4 border-2 border-gray-300 shadow-lg">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white font-semibold flex items-center gap-2">
+                <h2 className="text-gray-900 font-display text-xl tracking-tight flex items-center gap-2">
                   <Camera className="w-5 h-5" />
                   Live Camera Feed
                 </h2>
                 <div
-                  className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+                  className={`px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 ${
                     isActive
-                      ? "bg-green-500/20 text-green-300"
-                      : "bg-gray-700 text-gray-400"
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-300 text-gray-600"
                   }`}
                 >
                   {isAnalyzing && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -252,7 +339,7 @@ export default function RealtimeVisionPage() {
               </div>
 
               <div
-                className="relative w-full rounded-lg overflow-hidden bg-black"
+                className="relative w-full rounded-xl overflow-hidden bg-gray-200 border-2 border-gray-300"
                 style={{
                   height: "calc(100vh - 280px)",
                   minHeight: "400px",
@@ -267,10 +354,12 @@ export default function RealtimeVisionPage() {
                   className="w-full h-full object-cover"
                 />
                 {!isActive && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50">
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 backdrop-blur-sm">
                     <div className="text-center">
-                      <Camera className="w-16 h-16 text-gray-500 mx-auto mb-2" />
-                      <p className="text-gray-400">Camera not active</p>
+                      <Camera className="w-16 h-16 text-gray-400 mx-auto mb-2" />
+                      <p className="text-gray-600 font-body">
+                        Camera not active
+                      </p>
                     </div>
                   </div>
                 )}
@@ -280,10 +369,10 @@ export default function RealtimeVisionPage() {
                 <button
                   onClick={isActive ? handleStop : handleStart}
                   disabled={isAnalyzing || !apiKey}
-                  className={`w-full py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 ${
+                  className={`w-full py-3 rounded-full font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
                     isActive
-                      ? "bg-red-500 hover:bg-red-600 text-white disabled:bg-red-400"
-                      : "bg-green-500 hover:bg-green-600 text-white disabled:bg-green-400 disabled:cursor-not-allowed"
+                      ? "bg-gray-900 hover:bg-gray-800 text-white disabled:bg-gray-700 disabled:opacity-50"
+                      : "bg-gray-900 hover:bg-gray-800 text-white disabled:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                   }`}
                 >
                   {isActive ? (
@@ -303,11 +392,11 @@ export default function RealtimeVisionPage() {
                 )}
               </div>
 
-              <div className="mt-4 bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
-                <h3 className="text-blue-300 font-semibold mb-2 text-sm">
+              <div className="mt-4 bg-gray-100 border border-gray-300 rounded-xl p-4">
+                <h3 className="text-gray-900 font-display font-medium mb-2 text-base tracking-tight">
                   📷 How it works
                 </h3>
-                <ul className="text-gray-300 text-xs space-y-1">
+                <ul className="text-gray-700 text-sm space-y-1.5 font-body">
                   <li>• Point camera at artwork, monuments, or landscapes</li>
                   <li>• AI automatically detects and lists items in sidebar</li>
                   <li>• Click any detection to analyze and get full details</li>
@@ -319,26 +408,26 @@ export default function RealtimeVisionPage() {
 
           <div className="lg:col-span-1">
             <div
-              className="bg-gray-800 rounded-xl p-4"
+              className="bg-white/60 backdrop-blur-md rounded-2xl p-6 border-2 border-gray-300 shadow-lg"
               style={{ height: "calc(100vh - 180px)", minHeight: "500px" }}
             >
-              <h2 className="text-white font-semibold mb-3 text-sm">
+              <h2 className="text-gray-900 font-display text-xl tracking-tight mb-4">
                 Recent Detections
               </h2>
 
               <div
-                className="space-y-2 overflow-y-auto"
-                style={{ height: "calc(100% - 40px)" }}
+                className="space-y-3 overflow-y-auto"
+                style={{ height: "calc(100% - 50px)" }}
               >
                 {detections.length === 0 ? (
                   <div className="text-center py-8">
-                    <Camera className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                    <p className="text-gray-500 font-medium mb-1 text-sm">
+                    <Camera className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-700 font-medium mb-1 text-sm font-body">
                       {isActive
                         ? "Scanning for artwork..."
                         : "Start the camera to detect artwork"}
                     </p>
-                    <p className="text-gray-600 text-xs">
+                    <p className="text-gray-600 text-xs font-body">
                       Point at paintings, sculptures, monuments, or landscapes
                     </p>
                   </div>
@@ -351,44 +440,44 @@ export default function RealtimeVisionPage() {
                         handleAnalyzeDetection(detection)
                       }
                       disabled={detection.analyzing || isAnalyzing}
-                      className={`w-full bg-gray-900 rounded-lg p-3 border text-left transition-all ${
+                      className={`w-full bg-white/80 rounded-xl p-4 border-2 text-left transition-all ${
                         detection.analyzing
-                          ? "border-blue-500 animate-pulse cursor-wait"
+                          ? "border-gray-900 animate-pulse cursor-wait shadow-lg"
                           : isAnalyzing
-                            ? "border-gray-700 opacity-50 cursor-not-allowed"
-                            : "border-gray-700 hover:border-blue-500 hover:bg-gray-800 cursor-pointer"
+                            ? "border-gray-300 opacity-50 cursor-not-allowed"
+                            : "border-gray-300 hover:border-gray-900 hover:bg-white hover:shadow-md cursor-pointer"
                       }`}
                     >
                       <div className="flex items-start justify-between mb-1.5">
                         <div className="flex items-center gap-1.5">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
                               detection.type === "museum"
-                                ? "bg-purple-500/20 text-purple-300"
+                                ? "bg-gray-900 text-white"
                                 : detection.type === "monuments"
-                                  ? "bg-amber-500/20 text-amber-300"
-                                  : "bg-green-500/20 text-green-300"
+                                  ? "bg-gray-900 text-white"
+                                  : "bg-gray-900 text-white"
                             }`}
                           >
                             {detection.type === "museum"
                               ? "🎨 Art"
                               : detection.type === "monuments"
-                                ? "🏛️ Mon"
-                                : "🌄 Land"}
+                                ? "🏛️ Monument"
+                                : "🌄 Landscape"}
                           </span>
-                          <span className="text-gray-400 text-xs">
+                          <span className="text-gray-600 text-xs font-medium">
                             {detection.confidence}%
                           </span>
                         </div>
-                        <span className="text-gray-500 text-xs">
+                        <span className="text-gray-500 text-xs font-body">
                           {detection.timestamp}
                         </span>
                       </div>
-                      <p className="text-gray-300 text-xs mb-1.5 line-clamp-2">
+                      <p className="text-gray-700 text-sm mb-2 line-clamp-2 font-body">
                         {detection.description}
                       </p>
                       {detection.analyzing && (
-                        <div className="flex items-center gap-1.5 text-blue-400 text-xs">
+                        <div className="flex items-center gap-1.5 text-gray-900 text-xs font-medium">
                           <Loader2 className="w-3 h-3 animate-spin" />
                           Analyzing...
                         </div>

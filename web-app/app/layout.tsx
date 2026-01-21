@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
+import { Libre_Baskerville, Marcellus } from "next/font/google";
 import "./globals.css";
+
+const baskerville = Libre_Baskerville({
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  variable: "--font-baskerville",
+});
+
+const marcellus = Marcellus({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-marcellus",
+});
 
 export const metadata: Metadata = {
   title: "Art Beyond Sight",
@@ -14,7 +27,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body
+        className={`${baskerville.variable} ${marcellus.variable} antialiased font-sans`}
+      >
+        {children}
+      </body>
     </html>
   );
 }

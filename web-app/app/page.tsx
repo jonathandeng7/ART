@@ -1,5 +1,10 @@
 "use client";
 
+import { Component as GradientButton } from "@/components/ui/button-1";
+import { HoverButton } from "@/components/ui/hover-button";
+import { SplineScene } from "@/components/ui/spline";
+import { Spotlight } from "@/components/ui/spotlight";
+import { TextRevealByWord } from "@/components/ui/text-reveal";
 import { useOvershootStagger } from "@/hooks/useOvershoot";
 import { Building2Icon, ImageIcon, TreesIcon } from "lucide-react";
 import Link from "next/link";
@@ -41,29 +46,23 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200 overflow-x-hidden">
       {/* Header */}
-      <header className="border-b border-gray-700 bg-gray-900/50 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-6">
+      <header className="border-b border-gray-300 bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white">
-                Art Beyond Sight
+              <h1 className="text-3xl font-display text-gray-900 tracking-tight">
+                @rt
               </h1>
-              <p className="text-gray-400 mt-1">
-                AI-powered accessibility for art and culture
-              </p>
             </div>
-            <nav className="flex gap-4">
-              <Link
-                href="/realtime-vision"
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              >
-                Real-Time Vision
-              </Link>
+            <nav className="flex gap-3 items-center">
+              <GradientButton href="/realtime-vision">
+                🎥 Real-Time Vision
+              </GradientButton>
               <Link
                 href="/history"
-                className="px-4 py-2 rounded-lg bg-gray-800 text-white hover:bg-gray-700 transition-colors"
+                className="px-5 py-2.5 rounded-full bg-gray-200 backdrop-blur-sm text-gray-900 hover:bg-gray-300 transition-all duration-300 text-sm font-medium border border-gray-400"
               >
                 History
               </Link>
@@ -73,90 +72,128 @@ export default function HomePage() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Choose Your Experience
-            </h2>
-            <p className="text-gray-400 text-lg">
-              Select a mode to begin analyzing images with AI
-            </p>
-          </div>
+      <main className="relative">
+        {/* 3D Background Robot - Full viewport behind everything */}
+        <div className="fixed inset-0 z-0 grayscale">
+          <SplineScene
+            scene="https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode"
+            className="w-full h-full opacity-20"
+          />
+          {/* Light overlay to ensure readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white/60 via-gray-50/40 to-gray-100/60 pointer-events-none" />
+        </div>
 
-          {/* Mode Selection Cards */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
-            {modes.map((mode, index) => {
-              const Icon = mode.icon;
-              return (
-                <div
-                  key={mode.id}
-                  ref={(el) => {
-                    if (el) itemsRef.current.set(index, el);
-                  }}
-                  onClick={() => setSelectedMode(mode.id)}
-                  className={`
-                    relative overflow-hidden rounded-xl p-6 cursor-pointer
-                    transition-all duration-300 transform hover:scale-105
-                    ${
-                      selectedMode === mode.id
-                        ? `${mode.color} ring-4 ring-white`
-                        : "bg-gray-800/50 hover:bg-gray-800"
-                    }
-                  `}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    <div className="mb-4 p-4 rounded-full bg-white/10">
-                      <Icon className="w-8 h-8 text-white" />
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">
-                      {mode.name}
-                    </h3>
-                    <p className="text-gray-300 text-sm">{mode.description}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Continue Button */}
-          {selectedMode && (
-            <div className="text-center animate-fade-in">
-              <Link
-                href={`/scan/${selectedMode}`}
-                className={`
-                  inline-flex items-center gap-2 px-8 py-4 rounded-lg
-                  text-white font-semibold text-lg
-                  ${modes.find((m) => m.id === selectedMode)?.color}
-                  ${modes.find((m) => m.id === selectedMode)?.hoverColor}
-                  transition-all duration-300 transform hover:scale-105
-                  shadow-lg hover:shadow-xl
-                `}
-              >
-                Continue to {modes.find((m) => m.id === selectedMode)?.name}
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 7l5 5m0 0l-5 5m5-5H6"
-                  />
-                </svg>
-              </Link>
+        {/* Content Container */}
+        <div className="relative z-10 container mx-auto px-4 py-20 pointer-events-none">
+          <div className="max-w-6xl mx-auto pointer-events-auto">
+            {/* Hero Section */}
+            <div className="text-center mb-8 animate-fade-in">
+              <Spotlight
+                className="-top-40 left-1/2 -translate-x-1/2"
+                fill="rgba(0, 0, 0, 0.03)"
+              />
+              <h2 className="text-5xl md:text-6xl font-display mb-4 text-gray-900 tracking-tight font-light">
+                Choose Your Experience
+              </h2>
+              <div className="max-w-2xl mx-auto">
+                <TextRevealByWord
+                  text="@rt will change the way you perceive art"
+                  className="h-auto"
+                />
+              </div>
             </div>
-          )}
+
+            {/* Mode Selection Cards */}
+            <div className="grid md:grid-cols-3 gap-8 mb-16">
+              {modes.map((mode, index) => {
+                const Icon = mode.icon;
+                return (
+                  <div
+                    key={mode.id}
+                    ref={(el) => {
+                      if (el) itemsRef.current.set(index, el);
+                    }}
+                    onClick={() => setSelectedMode(mode.id)}
+                    className={`
+                      group relative overflow-hidden rounded-2xl p-8 cursor-pointer
+                      backdrop-blur-md border-2 transition-all duration-500 transform hover:scale-105
+                      ${
+                        selectedMode === mode.id
+                          ? "bg-gray-900 border-gray-800 shadow-2xl"
+                          : "bg-white/60 border-gray-300 hover:bg-white/80 hover:border-gray-400 hover:shadow-xl"
+                      }
+                    `}
+                  >
+                    {/* Gradient overlay on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-100/0 to-gray-200/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                    <div className="relative z-10 flex flex-col items-center text-center">
+                      <div
+                        className={`mb-6 p-5 rounded-2xl transition-all duration-300 ${
+                          selectedMode === mode.id
+                            ? "bg-gray-800 scale-110"
+                            : "bg-gray-200 group-hover:bg-gray-300 group-hover:scale-110"
+                        }`}
+                      >
+                        <Icon
+                          className={`w-10 h-10 ${
+                            selectedMode === mode.id
+                              ? "text-white"
+                              : "text-gray-900"
+                          }`}
+                        />
+                      </div>
+                      <h3
+                        className={`text-xl font-display mb-3 tracking-normal font-normal ${
+                          selectedMode === mode.id
+                            ? "text-white"
+                            : "text-gray-900"
+                        }`}
+                      >
+                        {mode.name}
+                      </h3>
+                      <p
+                        className={`leading-relaxed font-body mb-6 text-sm ${
+                          selectedMode === mode.id
+                            ? "text-gray-300"
+                            : "text-gray-600"
+                        }`}
+                      >
+                        {mode.description}
+                      </p>
+
+                      {/* Hover Button */}
+                      <Link href={`/scan/${mode.id}`}>
+                        <HoverButton className="w-full">
+                          Explore {mode.name.replace(" Mode", "")}
+                        </HoverButton>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Continue Button - Keep for selected state */}
+            {selectedMode && (
+              <div className="text-center animate-fade-in">
+                <Link href={`/scan/${selectedMode}`}>
+                  <HoverButton className="text-lg px-12 py-6">
+                    Continue to {modes.find((m) => m.id === selectedMode)?.name}
+                  </HoverButton>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-700 mt-20 py-8">
-        <div className="container mx-auto px-4 text-center text-gray-500">
-          <p>© 2026 Art Beyond Sight - Making art accessible to everyone</p>
+      <footer className="relative z-10 border-t border-gray-300 mt-32 py-8 backdrop-blur-sm bg-white/80">
+        <div className="container mx-auto px-4 text-center text-gray-600">
+          <p className="text-sm tracking-wide">
+            © 2026 Art Beyond Sight - Making art accessible to everyone
+          </p>
         </div>
       </footer>
     </div>

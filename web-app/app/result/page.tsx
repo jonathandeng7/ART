@@ -14,28 +14,16 @@ function ResultPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  console.log("🎬 Result page mounted");
+  console.log("   Search params:", Object.fromEntries(searchParams.entries()));
+
   // Get data from sessionStorage instead of URL params to avoid HTTP 431 error
   const resultId = searchParams.get("id");
-  const storedData = resultId ? sessionStorage.getItem(resultId) : null;
-  const data = storedData ? JSON.parse(storedData) : {};
+  console.log("   Result ID:", resultId);
 
-  const imageUri = data.imageUri || searchParams.get("imageUri") || "";
-  const title = data.title || searchParams.get("title") || "Untitled";
-  const artist = data.artist || searchParams.get("artist") || "Unknown Artist";
-  const type = data.type || searchParams.get("type") || "";
-  const description = data.description || searchParams.get("description") || "";
-  const historicalPrompt =
-    data.historicalPrompt || searchParams.get("historicalPrompt") || "";
-  const immersivePrompt =
-    data.immersivePrompt || searchParams.get("immersivePrompt") || "";
-  const emotions =
-    data.emotions ||
-    (searchParams.get("emotions")
-      ? JSON.parse(searchParams.get("emotions")!)
-      : []);
-  const audioUri = data.audioUri || searchParams.get("audioUri") || "";
-  const mode = data.mode || searchParams.get("mode") || "museum";
-
+  // ALL useState hooks must be at the top, before any conditional returns
+  const [resultData, setResultData] = useState<any>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
   const [isPlayingHistorical, setIsPlayingHistorical] = useState(false);
   const [isPlayingImmersive, setIsPlayingImmersive] = useState(false);
@@ -47,9 +35,59 @@ function ResultPageContent() {
   );
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Load initial data
   useEffect(() => {
-    // Auto-play music when available
-    if (audioUri) {
+    if (resultId) {
+      const storedData = sessionStorage.getItem(resultId);
+      if (storedData) {
+        try {
+          const data = JSON.parse(storedData);
+          setResultData(data);
+          setIsEnriching(data.isEnriching || false);
+          console.log("   Parsed data:", {
+            title: data.title,
+            artist: data.artist,
+            type: data.type,
+            isEnriching: data.isEnriching,
+            hasImage: !!data.imageUri,
+            hasAudio: !!data.audioUri,
+          });
+        } catch (parseError) {
+          console.error("❌ Failed to parse stored data:", parseError);
+        }
+      }
+    }
+  }, [resultId]);
+
+  // Listen for enrichment updates
+  useEffect(() => {
+    const handleEnrichment = (event: CustomEvent) => {
+      if (event.detail.resultId === resultId) {
+        console.log("🎨 Enrichment complete, reloading data...");
+        const storedData = sessionStorage.getItem(resultId);
+        if (storedData) {
+          const data = JSON.parse(storedData);
+          setResultData(data);
+          setIsEnriching(false);
+        }
+      }
+    };
+
+    window.addEventListener(
+      "artwork-enriched",
+      handleEnrichment as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "artwork-enriched",
+        handleEnrichment as EventListener,
+      );
+    };
+  }, [resultId]);
+
+  // Auto-play music when available
+  useEffect(() => {
+    if (resultData?.audioUri) {
       playMusic();
     }
     return () => {
@@ -64,7 +102,37 @@ function ResultPageContent() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioUri]);
+  }, [resultData?.audioUri]);
+
+  // Early return AFTER all hooks
+  if (!resultData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        Loading...
+      </div>
+    );
+  }
+
+  const imageUri = resultData.imageUri || searchParams.get("imageUri") || "";
+  const title = resultData.title || searchParams.get("title") || "Untitled";
+  const artist =
+    resultData.artist || searchParams.get("artist") || "Unknown Artist";
+  const type = resultData.type || searchParams.get("type") || "";
+  const description =
+    resultData.description || searchParams.get("description") || "";
+  const historicalPrompt =
+    resultData.historicalPrompt || searchParams.get("historicalPrompt") || "";
+  const immersivePrompt =
+    resultData.immersivePrompt || searchParams.get("immersivePrompt") || "";
+  const emotions =
+    resultData.emotions ||
+    (searchParams.get("emotions")
+      ? JSON.parse(searchParams.get("emotions")!)
+      : []);
+  const audioUri = resultData.audioUri || searchParams.get("audioUri") || "";
+  const mode = resultData.mode || searchParams.get("mode") || "museum";
+
+  console.log("   Final values:", { title, artist, type, mode, isEnriching });
 
   const playMusic = () => {
     if (audioUri) {

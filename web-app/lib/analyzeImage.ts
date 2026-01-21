@@ -2,6 +2,7 @@
 // This integrates with your existing backend pipeline
 
 import { analyzeArtwork } from "./navigator";
+import { generateMusic } from "./suno";
 
 export interface AnalyzeImageResult {
   imageUri: string;
@@ -19,20 +20,22 @@ export interface AnalyzeImageResult {
 export async function analyzeImage(
   imageDataUrl: string,
   mode: "museum" | "monuments" | "landscape",
+  overshootDescription?: string,
 ): Promise<AnalyzeImageResult> {
   console.log(`🎯 Starting ${mode} analysis...`);
   console.log(`   Image data length: ${imageDataUrl.length} chars`);
+  console.log(`   Overshoot description: ${overshootDescription}`);
 
   try {
     if (mode === "museum") {
       console.log("   Route: Museum mode");
-      return await analyzeMuseumMode(imageDataUrl);
+      return await analyzeMuseumMode(imageDataUrl, overshootDescription);
     } else if (mode === "monuments") {
       console.log("   Route: Monuments mode");
-      return await analyzeMonumentsMode(imageDataUrl);
+      return await analyzeMonumentsMode(imageDataUrl, overshootDescription);
     } else if (mode === "landscape") {
       console.log("   Route: Landscape mode");
-      return await analyzeLandscapeMode(imageDataUrl);
+      return await analyzeLandscapeMode(imageDataUrl, overshootDescription);
     } else {
       throw new Error(`Unsupported mode: ${mode}`);
     }
@@ -48,22 +51,24 @@ export async function analyzeImage(
 
 async function analyzeMuseumMode(
   imageDataUrl: string,
+  overshootDescription?: string,
 ): Promise<AnalyzeImageResult> {
   console.log("🎨 Museum Mode: Starting Navigator AI analysis...");
 
   try {
     // Step 1: Analyze artwork with Navigator API
     console.log("   Calling analyzeArtwork...");
-    const analysis = await analyzeArtwork(imageDataUrl, "museum");
+    const analysis = await analyzeArtwork(
+      imageDataUrl,
+      "museum",
+      overshootDescription,
+    );
     console.log("   analyzeArtwork returned:", analysis);
 
     console.log("✅ Navigator analysis complete:", analysis.title);
 
-    // Step 2: Generate music with Suno (optional, skip for now to test)
+    // Step 2: Generate music with Suno
     let audioUri: string | null = null;
-    console.log("⏭️ Skipping music generation for faster testing");
-    // TODO: Re-enable music generation after fixing core pipeline
-    /*
     try {
       console.log("🎵 Generating music with Suno...");
       const musicPrompt = `Create an ambient classical instrumental piece that evokes ${analysis.emotions.join(", ")} feelings, inspired by ${analysis.title}. The music should be contemplative and immersive.`;
@@ -76,15 +81,14 @@ async function analyzeMuseumMode(
       });
 
       audioUri = musicResult.audioUrl;
-      console.log("✅ Music generated successfully");
+      console.log("✅ Music generated successfully:", audioUri);
     } catch (musicError) {
       console.warn(
-        "Music generation failed (continuing without music):",
+        "⚠️ Music generation failed (continuing without music):",
         musicError,
       );
       // Continue without music - not critical
     }
-    */
 
     const result: AnalyzeImageResult = {
       imageUri: imageDataUrl,
@@ -123,11 +127,16 @@ async function analyzeMuseumMode(
 
 async function analyzeMonumentsMode(
   imageDataUrl: string,
+  overshootDescription?: string,
 ): Promise<AnalyzeImageResult> {
   console.log("🏛️ Monuments Mode: Starting Navigator AI analysis...");
 
   try {
-    const analysis = await analyzeArtwork(imageDataUrl, "monuments");
+    const analysis = await analyzeArtwork(
+      imageDataUrl,
+      "monuments",
+      overshootDescription,
+    );
 
     return {
       imageUri: imageDataUrl,
@@ -156,11 +165,16 @@ async function analyzeMonumentsMode(
 
 async function analyzeLandscapeMode(
   imageDataUrl: string,
+  overshootDescription?: string,
 ): Promise<AnalyzeImageResult> {
   console.log("🌄 Landscape Mode: Starting Navigator AI analysis...");
 
   try {
-    const analysis = await analyzeArtwork(imageDataUrl, "landscape");
+    const analysis = await analyzeArtwork(
+      imageDataUrl,
+      "landscape",
+      overshootDescription,
+    );
 
     return {
       imageUri: imageDataUrl,

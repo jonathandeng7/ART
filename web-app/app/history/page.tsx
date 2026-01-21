@@ -156,12 +156,23 @@ export default function HistoryPage() {
                 {/* Thumbnail */}
                 {item.metadata?.imageUri && (
                   <div className="relative w-full aspect-video bg-gray-900">
-                    <Image
-                      src={item.metadata.imageUri}
-                      alt={item.image_name}
-                      fill
-                      className="object-cover"
-                    />
+                    {item.metadata.imageUri.startsWith("file://") ||
+                    item.metadata.imageUri.startsWith("data:") ? (
+                      // Use regular img for local files and data URLs
+                      <img
+                        src={item.metadata.imageUri}
+                        alt={item.image_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      // Use Next.js Image for HTTP URLs
+                      <Image
+                        src={item.metadata.imageUri}
+                        alt={item.image_name}
+                        fill
+                        className="object-cover"
+                      />
+                    )}
                   </div>
                 )}
 

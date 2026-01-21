@@ -2,8 +2,13 @@ import os
 from datetime import datetime
 from typing import Optional, List
 import uvicorn
+import base64
+import uuid
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
@@ -54,6 +59,13 @@ class ImageAnalysisUpdate(BaseModel):
 # FastAPI App
 app = FastAPI(title="Art Beyond Sight API", version="1.0.0")
 
+# Create temp directory for images
+TEMP_IMAGE_DIR = Path("temp_images")
+TEMP_IMAGE_DIR.mkdir(exist_ok=True)
+
+# Mount static files
+app.mount("/temp_images", StaticFiles(directory="temp_images"), name="temp_images")
+
 # Enable CORS for your Expo app
 app.add_middleware(
     CORSMiddleware,
@@ -78,6 +90,48 @@ def serialize_doc(doc):
     return doc
 
 # API Endpoints
+
+class UploadImageRequest(BaseModel):
+    image_base64: str  # data:image/jpeg;base64,... format
+
+class UploadImageResponse(BaseModel):
+    image_url: str
+    image_id: str
+
+@app.post("/api/upload-temp-image", response_model=UploadImageResponse)
+async def upload_temp_image(request: UploadImageRequest):
+    """
+    Upload a base64 image and get back an HTTP URL for use with Navigator API
+    """
+    try:
+        # Extract base64 data
+        if request.image_base64.startswith("data:"):
+            # Remove data URL prefix
+            base64_data = request.image_base64.split(",", 1)[1]
+        else:
+            base64_data = request.image_base64
+        
+        # Decode base64
+        image_bytes = base64.b64decode(base64_data)
+        
+        # Generate unique filename
+        image_id = str(uuid.uuid4())
+        filename = f"{image_id}.jpg"
+        filepath = TEMP_IMAGE_DIR / filename
+        
+        # Save image
+        with open(filepath, "wb") as f:
+            f.write(image_bytes)
+        
+        # Return URL (adjust host/port as needed)
+        image_url = f"http://localhost:8000/temp_images/{filename}"
+        
+        print(f"✅ Uploaded temp image: {image_url}")
+        return UploadImageResponse(image_url=image_url, image_id=image_id)
+    
+    except Exception as e:
+        print(f"❌ Failed to upload image: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to upload image: {str(e)}")
 
 @app.post("/api/image-analysis", response_model=ImageAnalysisResponse)
 async def create_image_analysis(analysis: ImageAnalysisRequest):
